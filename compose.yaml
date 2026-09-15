@@ -1,0 +1,24 @@
+name: licita-v2
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: licita
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-licita}
+      POSTGRES_DB: licita
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_v2:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U licita -d licita"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+volumes:
+  postgres_v2:

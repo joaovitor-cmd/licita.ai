@@ -1,0 +1,32 @@
+{
+  "name": "licita-platform",
+  "version": "2.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "apps/console"
+  ],
+  "engines": {
+    "node": ">=24",
+    "npm": ">=10"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "dev:console": "concurrently -k -n console-api,console-web -c yellow,blue \"npm run dev:console -w apps/api\" \"npm run dev -w apps/console\"",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:integration": "node --test tests/api.test.mjs",
+    "test:browser": "node tests/browser.mjs",
+    "db:up": "docker compose up -d postgres mailpit"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "concurrently": "^9.2.1",
+    "embedded-postgres": "18.4.0-beta.17",
+    "playwright": "^1.55.0",
+    "prettier": "^3.9.6",
+    "smtp-server": "^3.19.9"
+  }
+}

@@ -1,0 +1,14 @@
+.git
+**/node_modules
+**/dist
+.env
+.env.*
+.local
+deploy/secrets
+test-results
+coverage
+*.log
+*.dump
+*.backup
+*.pem
+*.key

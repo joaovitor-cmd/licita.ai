@@ -1,0 +1,13 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {BrowserRouter} from 'react-router-dom';
+import {ToastProvider} from '../../web/src/ui';
+import {initializeTheme} from '../../web/src/theme';
+import '../../web/src/styles.css';
+import '../../web/src/readability.css';
+import '../../web/src/dark.css';
+import '../../web/src/selects.css';
+import './console.css';
+import {App} from './App';
+initializeTheme();
+createRoot(document.getElementById('root')!).render(<React.StrictMode><BrowserRouter><ToastProvider><App/></ToastProvider></BrowserRouter></React.StrictMode>);

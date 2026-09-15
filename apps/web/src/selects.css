@@ -1,0 +1,33 @@
+/* Keep native form semantics and keyboard navigation while styling the popup itself.
+   Browsers without customizable-select support retain the accessible native picker. */
+@supports (appearance: base-select) {
+  select:not([multiple]):not([size]),
+  select:not([multiple]):not([size])::picker(select) { appearance: base-select; }
+  select:not([multiple]):not([size]) {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; min-height: 40px; background-image: none; cursor: pointer;
+  }
+  select::picker-icon { color: #73658d; transition: transform .15s; }
+  select:open::picker-icon { transform: rotate(180deg); }
+  select::picker(select) {
+    background: #fff; color: #27344a; border: 1px solid #cbd3e1;
+    border-radius: 10px; padding: 6px; margin-block: 6px;
+    box-shadow: 0 12px 32px #18274426; max-height: min(300px,50dvh);
+    overflow-y: auto; scrollbar-width: thin; font: inherit;
+  }
+  select option {
+    display: flex; align-items: center; gap: 10px; padding: 11px 12px;
+    min-height: 40px; border-radius: 6px; color: #27344a; background: transparent;
+    white-space: normal; overflow-wrap: anywhere; cursor: pointer; line-height: 1.5;
+  }
+  select option:checked { background: #efeafa; color: #523880; font-weight: 600; }
+  select option:hover,select option:focus-visible { background: #e6e0f5; color: #422969; outline: none; }
+  select option::checkmark { color: #7552bb; }
+  select option:disabled { opacity: .5; cursor: not-allowed; }
+  :root[data-theme=dark] select::picker(select) { background: #182437; color: #e2eaf6; border-color: #465675; box-shadow: 0 12px 32px #0006; }
+  :root[data-theme=dark] select::picker-icon { color: #c5b6eb; }
+  :root[data-theme=dark] select option { background: #182437; color: #e2eaf6; }
+  :root[data-theme=dark] select option:checked { background: #36304f; color: #ede3ff; }
+  :root[data-theme=dark] select option:hover,:root[data-theme=dark] select option:focus-visible { background: #423660; color: #fff; }
+  :root[data-theme=dark] select option::checkmark { color: #c3a4ff; }
+}

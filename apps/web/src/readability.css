@@ -1,0 +1,496 @@
+/* Readability pass: quiet hierarchy without low-contrast operational text. */
+.topbar-breadcrumb,
+.user-label > span,
+.mini-metrics div > span:not(.metric-icon),
+.segment-control button,
+.app-footer,
+.app-footer > span:first-child,
+.app-footer > span:first-child > span {
+  color: #5e6d83;
+}
+.page-content .eyebrow {
+  color: #7460a5;
+}
+.demo-pill {
+  color: #624795;
+}
+.badge.purple {
+  color: #6b50a6;
+}
+.badge.slate {
+  color: #53637d;
+}
+.overline {
+  color: #617087;
+}
+.catalog-card.inactive {
+  opacity: 1;
+  background: #f8f9fc;
+}
+.auth-form-container > p,
+.auth-form .field-label,
+.auth-switch,
+.demo-disclaimer,
+.auth-security,
+.auth-divider span,
+.auth-form input::placeholder {
+  color: #68748a !important;
+}
+.auth-form-container > p {
+  font-size: 14px;
+}
+.auth-form .field-label {
+  font-size: 13px;
+}
+.auth-form input {
+  font-size: 14px;
+}
+.auth-form .field small {
+  font-size: 11px;
+}
+.auth-switch {
+  font-size: 12px !important;
+}
+.demo-disclaimer,
+.auth-security {
+  font-size: 11px !important;
+}
+.auth-form-container > .button {
+  font-size: 13px;
+  color: #695493;
+}
+.auth-form-container .eyebrow {
+  color: #7d629d;
+}
+.forgot-link {
+  font-size: 12px;
+  color: #785da3;
+}
+.auth-switch a {
+  color: #715397;
+}
+.auth-form > .button {
+  font-size: 13px;
+}
+.page-header p {
+  font-size: 13px;
+}
+.topbar-breadcrumb {
+  font-size: 12px;
+}
+.nav-item {
+  font-size: 13px;
+}
+.workspace-switch strong {
+  font-size: 11px;
+}
+.workspace-switch div > span {
+  font-size: 10px;
+}
+.user-label {
+  font-size: 11px;
+}
+.user-label > span {
+  font-size: 10px;
+}
+.global-search input {
+  font-size: 12px;
+}
+.metric-top {
+  font-size: 12px;
+}
+.metric-detail {
+  font-size: 10px;
+  color: #66758d;
+}
+.metric-value {
+  font-size: 32px;
+}
+.section-heading p,
+.agency,
+.opportunity-meta,
+.activity-item p,
+.activity-item time,
+.agenda-item > svg,
+.data-health span:not(.health-dot),
+.source-footnote,
+.source-footnote p,
+.field small,
+.field-help,
+.results-toolbar,
+.page-note,
+.info-note p,
+.empty-state p,
+.small-empty,
+.detail-fields dt,
+.detail-fields dd,
+.long-copy {
+  color: #5d6b80;
+}
+.section-heading p {
+  font-size: 12px;
+}
+.focus-banner p {
+  color: #716480;
+  font-size: 12px;
+}
+.focus-banner .eyebrow {
+  color: #766393;
+}
+.focus-banner a {
+  color: #725696;
+  font-size: 12px;
+}
+.dense h3 {
+  font-size: 14px;
+}
+.dense .agency,
+.dense .opportunity-meta {
+  font-size: 11px;
+}
+.dense .badge,
+.dense .score {
+  font-size: 9px;
+}
+.agenda-item h3 {
+  font-size: 12px;
+}
+.activity-item h3 {
+  font-size: 12px;
+}
+.activity-item p {
+  font-size: 11px;
+}
+.activity-item time {
+  font-size: 10px;
+}
+.coverage-panel .distribution-row > span,
+.distribution-row strong {
+  font-size: 12px;
+  color: #65758b;
+}
+.catalog-card > p,
+.catalog-card .overline,
+.catalog-card-footer,
+.tag-list > span,
+.source-card > p,
+.source-stats dt,
+.source-stats dd,
+.notification-row p,
+.notification-row time,
+.table-subtitle,
+.guidance-card p,
+.guidance-card li,
+.save-bar > span,
+.scheduler-strip p,
+.form-section .step-label {
+  color: #6b738a;
+}
+.catalog-card > p,
+.source-card > p {
+  font-size: 12px;
+}
+.catalog-card-footer {
+  font-size: 10px;
+}
+.tag-list > span {
+  font-size: 10px;
+  background: #efedf5;
+}
+.source-stats dt {
+  font-size: 11px;
+}
+.source-stats dd {
+  font-size: 12px;
+}
+.source-card h2 {
+  color: #4e5a72;
+}
+.source-intro p {
+  color: #68768d;
+}
+.source-actions .button,
+.source-actions .text-link {
+  font-size: 12px;
+}
+.source-intro .text-link {
+  font-size: 12px;
+}
+.scheduler-strip strong {
+  color: #5e6c82;
+}
+.scheduler-strip p {
+  font-size: 11px;
+}
+.field-label {
+  font-size: 13px;
+  color: #53617a;
+}
+.field input,
+.field select,
+.field textarea {
+  font-size: 13px;
+}
+.form-section .field small {
+  font-size: 11px;
+}
+.state-grid button {
+  font-size: 12px;
+  color: #63708a;
+}
+.state-grid button.selected {
+  color: #71538d;
+}
+.region-shortcuts .button {
+  font-size: 11px;
+}
+.guidance-card p,
+.guidance-card li {
+  font-size: 12px;
+}
+.step-label {
+  font-size: 10px;
+}
+.save-bar > span {
+  font-size: 11px;
+}
+.agenda-date strong,
+.agenda-date span {
+  color: #6b5389;
+}
+.segment-control button,
+.tag-list > span {
+  color: #58667e;
+}
+th {
+  font-size: 11px;
+  color: #627289;
+}
+td {
+  font-size: 12px;
+  color: #617089;
+}
+.table-subtitle {
+  font-size: 11px;
+}
+.member-name strong {
+  font-size: 12px;
+}
+.notification-title h2 {
+  font-size: 15px;
+  color: #53637b;
+}
+.notification-row time {
+  font-size: 11px;
+}
+.notification-row p {
+  font-size: 13px;
+}
+.notification-row .text-link,
+.notification-row .button {
+  font-size: 12px;
+}
+.column-heading h2 {
+  font-size: 13px;
+  color: #586a83;
+}
+.column-heading > span,
+.kanban-card-top,
+.kanban-card > p,
+.kanban-deadline,
+.kanban-card-footer,
+.column-empty {
+  color: #67768d;
+}
+.kanban-card-top,
+.kanban-card > p,
+.kanban-deadline,
+.kanban-card-footer,
+.column-heading > span {
+  font-size: 11px;
+}
+.kanban-card h3 {
+  font-size: 13px;
+  color: #415471;
+}
+.kanban-card > strong {
+  font-size: 15px;
+}
+.column-empty {
+  font-size: 11px;
+}
+.kanban-card-top .badge {
+  font-size: 10px;
+}
+.radar-summary .overline {
+  font-size: 10px;
+}
+.radar-summary strong small {
+  color: #66748a;
+}
+.radar-toolbar .check-row {
+  font-size: 12px;
+}
+.task-meta {
+  font-size: 11px;
+  color: #65768c;
+}
+.tracking-form .field-label {
+  font-size: 12px;
+}
+.tracking-form .field input,
+.tracking-form .field select,
+.tracking-form .field textarea {
+  font-size: 12px;
+}
+.preparation-card p {
+  color: #65556f;
+  font-size: 12px;
+}
+.official-deadline p {
+  font-size: 11px;
+  color: #66758a;
+}
+.official-deadline strong {
+  font-size: 12px;
+}
+.detail-fields dt {
+  font-size: 11px;
+}
+.detail-fields dd {
+  font-size: 13px;
+}
+.long-copy {
+  font-size: 13px;
+}
+.detail-summary-grid .overline {
+  font-size: 10px;
+}
+.tabs button {
+  font-size: 12px;
+  color: #67758d;
+}
+.tabs button.active {
+  color: #745298;
+}
+.filter-bar select,
+.filter-toggle {
+  font-size: 12px;
+  color: #66748a;
+}
+.results-toolbar {
+  font-size: 12px;
+}
+.results-toolbar > div,
+.results-toolbar select {
+  font-size: 11px;
+}
+.page-note {
+  font-size: 11px;
+}
+.info-note p {
+  font-size: 12px;
+}
+.modal-header p {
+  color: #68768b;
+  font-size: 12px;
+}
+.modal-form .field-label {
+  font-size: 13px;
+}
+.check-row {
+  color: #63728a;
+}
+.modal .error-notice {
+  font-size: 12px;
+}
+.confirm-copy {
+  font-size: 13px;
+  color: #68768a;
+}
+.button.secondary {
+  color: #53647f;
+}
+@media (max-width: 1250px) {
+  .metric-top {
+    font-size: 10px;
+  }
+  .metric-detail {
+    font-size: 9px;
+  }
+}
+@media (max-width: 540px) {
+  .metric-top {
+    font-size: 10px;
+  }
+  .metric-detail {
+    font-size: 9px;
+  }
+  .dense h3 {
+    font-size: 14px;
+  }
+  .user-label {
+    display: none;
+  }
+  .radar-summary .overline {
+    font-size: 8px;
+  }
+  .radar-toolbar .check-row {
+    font-size: 10px;
+  }
+  .topbar-breadcrumb {
+    font-size: 10px;
+  }
+  .source-actions .button,
+  .source-actions .text-link {
+    font-size: 11px;
+  }
+}
+.score:not(.score-high):not(.score-excluded),
+.pagination,
+.column-heading > span,
+.scheduler-strip p {
+  color: #596a81;
+}
+.coverage-panel .section-heading select {
+  font-size: 12px;
+  padding: 7px 20px 7px 9px;
+}
+.distribution-modalities .distribution-row > span {
+  width: 155px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.smtp-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:32px;row-gap:28px;margin:24px 0 18px}
+.smtp-grid .field{margin:0;min-width:0}.smtp-grid .field-label{font-size:14px;color:#18253a;margin-bottom:8px}
+.smtp-grid input,.smtp-grid select{min-height:42px;width:100%;border-radius:10px}
+.smtp-grid .field:has(input:disabled)>.field-label{color:#777e88}
+.smtp-grid input:disabled{background:#fafbfc;color:#747c8b;border-color:#e8ebef;cursor:not-allowed}
+.smtp-password-control{position:relative}.smtp-password-control input{padding-right:42px}
+.smtp-password-toggle{position:absolute;right:4px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:34px;height:34px;border:0;background:transparent;color:#67768b;border-radius:6px;cursor:pointer}
+.smtp-password-toggle:disabled{cursor:default;opacity:.5}.smtp-password-toggle:focus-visible{outline:2px solid #7257cf;outline-offset:1px}
+.smtp-extra{margin:16px 0}.smtp-extra summary{font-size:13px;color:#596a81;cursor:pointer}.smtp-extra .field{max-width:340px;margin-top:16px}
+@media(max-width:1100px){.smtp-grid{column-gap:20px}}
+@media(max-width:780px){.smtp-grid{grid-template-columns:1fr;row-gap:18px}}
+
+.email-history .table-wrap{max-height:480px;overflow:auto}
+.email-history th{position:sticky;top:0;background:#f7f9fc;z-index:1}
+.info-note{color:#52617a}
+.loading-state>span{color:#65508e}
+.procurement-journey{padding:24px;margin-bottom:24px}
+.procurement-journey ol{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;list-style:none;padding:0;margin:20px 0}
+.procurement-journey li{display:flex;flex-direction:column;gap:8px;line-height:1.6}
+.procurement-journey a{color:#6550a5;text-decoration:underline;text-underline-offset:3px}
+.procurement-journey summary,.edict-guide summary{cursor:pointer;font-weight:600;margin:14px 0}
+.procurement-journey details p{margin:12px 0}
+.edict-guide>p,.edict-guide>.button-row{margin:14px 0}
+.analysis-coverage,.analysis-topic{padding:20px 0;border-top:1px solid var(--border);margin-top:22px}
+.analysis-topic>p{margin:10px 0}.analysis-topic figure{margin:16px 0;padding:16px;border:1px solid var(--border);border-radius:8px}
+.analysis-topic blockquote{margin:0 0 12px;white-space:pre-wrap;line-height:1.7}
+.analysis-topic .form-grid{margin:16px 0}.analysis-topic figcaption{font-size:12px}
+.analysis-coverage li{margin:16px 0}
+.back-link,.source-footnote>a{color:#66528f}
+.next-step-card>p{color:#5e6d83}
+.analysis-topic{padding:14px 0;margin-top:0}.analysis-topic>summary{margin:0;list-style-position:outside}.analysis-topic>summary h3{display:inline;font-size:15px}.analysis-topic>summary>span{display:block;margin:8px 0 0 18px;font-weight:400}
+@media(max-width:1000px){.procurement-journey ol{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.procurement-journey ol{grid-template-columns:1fr}.tabs{flex-wrap:wrap}.analysis-topic figure{padding:12px}}

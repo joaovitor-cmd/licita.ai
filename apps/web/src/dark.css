@@ -1,0 +1,51 @@
+/* Scoped overrides keep the existing light theme unchanged. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  color: #d4deed;
+  background: #0d1422;
+  --navy: #0a111e;
+  --border: #334158;
+  --muted: #a8b6cb;
+  --shadow: 0 3px 14px #0002;
+}
+:root[data-theme="light"] {color-scheme:light}
+.theme-toggle {flex-shrink:0}
+:root[data-theme="dark"] :is(.card,.topbar,.user-menu,.metric-card,.opportunity-card,.radar-summary,.view-toggle,.kanban-card,.mini-metrics>div,.save-bar,.modal,.activity-node,.input-with-icon,.skip-link) {
+  background:#172235;border-color:var(--border);
+}
+:root[data-theme="dark"] :is(.auth-layout,.boot-screen) {background:#0d1422}
+:root[data-theme="dark"] :is(input,select,textarea,.auth-form input,.state-grid button,.file-input) {
+  background:#111c2d;color:#e2eaf6;border-color:#40516a;
+}
+:root[data-theme="dark"] :is(input,textarea)::placeholder {color:#a8b6cb}
+:root[data-theme="dark"] :is(input,select,textarea):disabled {background:#1a2536;color:#98a6ba;border-color:#334158}
+:root[data-theme="dark"] :is(.main-shell,.modal,.auth-form-side) :is(p,span,small,label,dt,dd,th,td,strong,time,li,a,button,summary,kbd) {
+  color:#d4deed;
+}
+:root[data-theme="dark"] :is(h1,h2,h3,.metric-value,.brand) {color:#eff4ff}
+:root[data-theme="dark"] :is(.muted,.overline,.field-help,.agency,.page-header p,.section-heading p,.detail-fields dt,.table-subtitle,.app-footer,.user-label>span,.topbar-breadcrumb,.opportunity-meta) {color:#a8b6cb}
+:root[data-theme="dark"] :is(.button.secondary,.auth-form-container>.button,.segment-control button.active) {background:#24324a;border-color:#40516a;color:#e2eaf6}
+:root[data-theme="dark"] :is(.button.secondary:hover:not(:disabled),.icon-button:hover,.user-menu a:hover,.user-menu button:hover,tbody tr:hover) {background:#30415b;color:#fff}
+:root[data-theme="dark"] :is(.button.primary,.button.danger) {color:#fff}
+:root[data-theme="dark"] .button.primary * {color:inherit}
+:root[data-theme="dark"] :is(.text-link,.back-link,.eyebrow,.page-content .eyebrow,.demo-banner a,.tabs button.active,.forgot-link,.auth-switch a) {color:#c0b3ff}
+:root[data-theme="dark"] :is(.info-note,.data-health,.scheduler-strip,.kanban-column,.tag-list>span,.segment-control,.catalog-card.inactive,th,.email-history th) {background:#1c2a40;border-color:#334158;color:#c2cfe2}
+:root[data-theme="dark"] :is(.focus-banner,.preparation-card,.progress-ring>span,.demo-banner) {background:#292643;border-color:#494365}
+/* Keep badges outside this mixed selector: :is() inherits its strongest specificity. */
+:root[data-theme="dark"] :is(.focus-icon,.demo-pill,.avatar,.owner-mini,.card-arrow,.agenda-date,.empty-icon,.file-icon,.source-intro-icon,.source-monogram,.notice-icon,.filter-toggle>span,.view-toggle>button.active,.state-grid button.selected) {background:#36304f;color:#dacfff;border-color:#685c8e}
+:root[data-theme="dark"] .badge {background:#293548;color:#cbd5e1}
+:root[data-theme="dark"] .badge.slate {color:#cbd5e1}
+:root[data-theme="dark"] :is(.badge.blue,.metric-icon.blue,.solution-icon.blue) {background:#223b57;color:#aed2ff}
+:root[data-theme="dark"] :is(.badge.green,.metric-icon.green,.success-notice) {background:#193e35;color:#a0e6c4}
+:root[data-theme="dark"] :is(.badge.amber,.metric-icon.amber) {background:#44351d;color:#f6d692}
+:root[data-theme="dark"] :is(.badge.red,.error-notice) {background:#492935;color:#ffc0c9}
+:root[data-theme="dark"] :is(.badge.purple,.solution-icon.purple,.metric-icon.purple) {background:#36304f;color:#dacfff}
+:root[data-theme="dark"] .score-high {color:#9fe1bd}
+:root[data-theme="dark"] :is(.score-excluded,.text-red) {color:#ffb3be!important}
+:root[data-theme="dark"] .text-amber {color:#f6d692}
+:root[data-theme="dark"] :is(.auth-form-container>p,.auth-form .field-label,.auth-switch,.demo-disclaimer,.auth-security,.auth-divider span,.auth-form input::placeholder) {color:#a8b6cb!important}
+:root[data-theme="dark"] :is(.global-search input,.filter-bar select,.results-toolbar select) {background:transparent}
+:root[data-theme="dark"] option {background:#172235;color:#e2eaf6}
+:root[data-theme="dark"] :is(.distribution-row>div,.activity-item:before,.auth-divider:before,.auth-divider:after) {background:#334158}
+:root[data-theme="dark"] .loading-state>span {color:#c0b3ff}
+:root[data-theme="dark"] :focus-visible {outline:2px solid #b5a5ff;outline-offset:3px}

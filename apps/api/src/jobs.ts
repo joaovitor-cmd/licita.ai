@@ -13,6 +13,7 @@ import { companyEmailConfigured } from "./smtp-settings.js";
 import { defaultProfile, scoreOpportunity } from "./scoring.js";
 import type { PoolClient } from "pg";
 import {recordSourceChange,findRelatedPublications} from './source-changes.js';
+import {notifyAgencyWatches} from './agency-watches.js';
 
 const intervalMinutes = Math.max(
   15,
@@ -182,7 +183,7 @@ export async function saveOpportunity(
         .join("\n");
       await recordSourceChange(db,oid,before,after,description);
     }
-    if(!previous) await findRelatedPublications(db,oid,merged);
+    if(!previous) {await findRelatedPublications(db,oid,merged);await notifyAgencyWatches(db,oid,merged);}
     return { id: oid, created: !previous, updated: changed, hash };
   });
   return outcome;

@@ -24,6 +24,7 @@ export const loginSchema = z
   .strict();
 export const profileSchema = z
   .object({
+    companyRevision:z.number().int().positive().optional(),
     organizationName: short,
     taxId: z.string().trim().max(24).refine(value=>{if(!value)return true;try{normalizeCnpj(value);return true;}catch{return false;}},'O número informado parece incompleto ou incorreto. Confira todos os caracteres, incluindo os dois números finais.').nullable().default(null),
     segments: textList.default([]),
@@ -84,7 +85,11 @@ export const catalogSchema = z
     description: z.string().trim().max(5000).default(""),
     category: z.string().trim().max(150).default(""),
     keywords: textList.default([]),
-    active: z.boolean().default(true),
+      active: z.boolean().default(true),
+      unit: z.string().trim().max(80).nullable().default(null),
+      unitCost: z.number().finite().nonnegative().max(1e12).multipleOf(0.0001).nullable().default(null),
+      salePrice: z.number().finite().nonnegative().max(1e12).multipleOf(0.0001).nullable().default(null),
+      priceBasis: z.enum(['PER_UNIT','ONE_TIME','MONTHLY','YEARLY']).nullable().default(null),
   })
   .strict();
 export const trackingSchema = z
@@ -116,13 +121,20 @@ export const taskSchema = z
     ownerId: uuid.nullable().optional().default(null),
   })
   .strict();
+const searchTerms=z.string().trim().max(2000).default('').refine(v=>v.split(',').filter(t=>t.trim()).length<=20,'Use até 20 termos separados por vírgula.');
 export const searchSchema = z.object({
+  searchProfiles:z.string().trim().max(400).default('').refine(value=>!value||(value.split(',').length<=10&&value.split(',').every(id=>uuid.safeParse(id.trim()).success)),'Selecione até 10 perfis de busca válidos.'),
+  terms: searchTerms,
+  exclude: searchTerms,
+  states: z.string().trim().max(100).default('').refine(v=>!v||v.split(',').every(s=>['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].includes(s.trim().toUpperCase())),'Selecione estados válidos.'),
   q: z.string().trim().max(300).default(""),
   state: z.string().max(2).default(""),
   city: z.string().trim().max(150).default(""),
   agency: z.string().trim().max(200).default(""),
   modality: z.string().max(150).default(""),
+  modalities: z.string().trim().max(1000).default('').refine(v=>v.split(',').filter(t=>t.trim()).length<=12,'Selecione até 12 modalidades.'),
   source: z.string().max(50).default(""),
+  sources: z.string().trim().max(100).default('').refine(v=>!v||v.split(',').every(s=>['pncp','comprasgov'].includes(s.trim())),'Selecione portais disponíveis.'),
   status: z.string().max(100).default(""),
   minValue: z.coerce.number().nonnegative().optional(),
   maxValue: z.coerce.number().nonnegative().optional(),

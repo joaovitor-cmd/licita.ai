@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { date, safeUrl, useResource } from "../api";
+import { HighlightedText } from "../HighlightedText";
 import { Button, ErrorNotice, Loading } from "../ui";
+import {foldItemText as fold,itemWords as words,createItemInterestMatcher} from '../item-interest';
 
 type Item = {
   number: number;
@@ -23,32 +25,73 @@ type Result = {
   notice?: string;
   sourceUrl?: string;
 };
+type Profile = {
+  id: string;
+  name: string;
+  active: boolean;
+  filters: Record<string, string | number>;
+};
+const numberFormat = new Intl.NumberFormat("pt-BR", {
+  maximumFractionDigits: 4,
+});
+const moneyFormat = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+});
 const amount = (n: number | null, money = false) =>
-  n == null
-    ? "Não informado"
-    : new Intl.NumberFormat("pt-BR", {
-        maximumFractionDigits: 4,
-        ...(money
-          ? { style: "currency", currency: "BRL", minimumFractionDigits: 2 }
-          : {}),
-      }).format(n);
+  n == null ? "Não informado" : (money ? moneyFormat : numberFormat).format(n);
+
 export function ProcurementItems({ id }: { id: string }) {
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(1),
+    [query, setQuery] = useState(""),
+    [profileId, setProfileId] = useState(""),
+    [interestsOnly, setInterestsOnly] = useState(false);
   const resource = useResource<Result>(
     `/opportunities/${id}/items?page=${page}`,
   );
+  const profiles = useResource<Profile[]>("/search-profiles");
+  const profile = profiles.data?.find((p) => p.id === profileId && p.active);
+  const terms = String(profile?.filters.terms || "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const exclusions = String(profile?.filters.exclude || "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
   const data = resource.data;
+  const matchInterest=useMemo(()=>createItemInterestMatcher(terms,exclusions),[profile]);
+  const rows = useMemo(
+    () =>
+      (data?.items || []).map((item) => {
+        const interest = matchInterest(item.description);
+        return {
+          item,
+          searchable: fold(`${item.number} ${item.description} ${item.unit || ""}`),
+          matched: interest.matched,
+          excluded: interest.excluded,
+        };
+      }),
+    [data, profile],
+  );
+  const interested = rows.filter(
+    (row) => row.matched.length > 0 && !row.excluded,
+  );
+  const queryText = fold(query);
+  const visible = rows.filter(
+    (row) =>
+      (!queryText || row.searchable.includes(queryText)) &&
+      (!interestsOnly || !profile || (row.matched.length > 0 && !row.excluded)),
+  );
+  const highlight = [...terms.flatMap(words), ...words(query)];
   return (
-    <section aria-label="Itens da contratação">
-      <h2>O que o órgão pretende contratar</h2>
+    <section aria-label="Itens da contratação" className="procurement-panel">
+      <h2>Itens e valores do edital</h2>
       <p className="muted">
-        Quantidades, unidades e estimativas publicadas no PNCP. Estimativa é uma
-        referência do órgão, não o preço vencedor nem o seu custo.
-      </p>
-      <p className="info-note">
-        Em impressão, uma “unidade” pode representar página, equipamento ou mês.
-        Confira franquias, insumos, prazo e atendimento nos anexos antes de
-        comparar preços ou simular sua proposta.
+        Quantidades e estimativas publicadas no PNCP. Não representam preço
+        vencedor, custo da sua empresa ou proposta enviada.
       </p>
       {resource.loading ? (
         <Loading />
@@ -64,73 +107,195 @@ export function ProcurementItems({ id }: { id: string }) {
             )}
             {data.supported && (
               <>
-                <p className="muted">
-                  Consulta desta página: {date(data.checkedAt, true)}.
-                  Reutilizada por até 1 hora.{" "}
+                <div className="procurement-toolbar">
+                  <label>
+                    Pesquisar nesta página
+                    <input
+                      aria-label="Pesquisar itens nesta página"
+                      type="search"
+                      maxLength={200}
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Descrição, número ou unidade"
+                    />
+                  </label>
+                  <label>
+                    Interesses de um perfil
+                    <select
+                      aria-label="Interesses de um perfil"
+                      value={profile?.id || ""}
+                      onChange={(e) => {
+                        setProfileId(e.target.value);
+                        setInterestsOnly(false);
+                      }}
+                      disabled={profiles.loading || !!profiles.error}
+                    >
+                      <option value="">Sem perfil — mostrar todos</option>
+                      {(profiles.data || [])
+                        .filter((p) => p.active)
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  {profile && (
+                    <Button
+                      variant="secondary"
+                      aria-pressed={interestsOnly}
+                      onClick={() => setInterestsOnly((v) => !v)}
+                      disabled={!terms.length}
+                    >
+                      {interestsOnly
+                        ? "Mostrar todos"
+                        : "Só itens de interesse"}
+                    </Button>
+                  )}
+                </div>
+                {profiles.error && (
+                  <ErrorNotice
+                    message="Não foi possível carregar os perfis. Você ainda pode consultar e pesquisar todos os itens."
+                    onRetry={profiles.reload}
+                  />
+                )}
+                {profile && (
+                  <p className="muted small">
+                    {terms.length
+                      ? `${interested.length} itens de interesse nesta página. Correspondência de palavras dos interesses; exclusões do perfil são respeitadas.`
+                      : "Este perfil não tem termos de interesse. Estados, modalidade e portal filtram editais, não especificações dos itens."}{" "}
+                    Esta sinalização não comprova compatibilidade técnica.
+                  </p>
+                )}
+                <p role="status" className="muted small">
+                  {visible.length} de {data.items.length} itens desta página ·
+                  Consulta em {date(data.checkedAt, true)}
+                  {data.stale ? " · Consulta antiga" : " · Cache de até 1 hora"}
+                  .{" "}
                   {safeUrl(data.sourceUrl) && (
                     <a
-                    href={safeUrl(data.sourceUrl)}
-                    style={{ textDecoration: 'underline' }}
+                      href={safeUrl(data.sourceUrl)}
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Consultar dados na fonte
+                      Consultar fonte
                     </a>
                   )}
+                </p>
+                <p className="muted small">
+                  Pesquisa e interesses cobrem apenas a página carregada.
+                  Percorra as páginas para conferir a contratação completa.
+                  Lotes e condições técnicas devem ser confirmados nos anexos.
                 </p>
                 {!data.items.length ? (
                   <p>
                     Nenhum item retornado nesta página. Isso não confirma
                     ausência de exigências no edital.
                   </p>
-                ) : (
-                  <div className="procurement-items">
-                    {data.items.map((item) => (
-                      <article className="card" key={item.number}>
-                        <h3>Item {item.number}</h3>
-                        <p className="long-copy">{item.description}</p>
-                        <dl className="detail-fields">
-                          <div>
-                            <dt>Quantidade</dt>
-                            <dd>{amount(item.quantity)}</dd>
-                          </div>
-                          <div>
-                            <dt>Unidade publicada</dt>
-                            <dd>{item.unit || "Não informada"}</dd>
-                          </div>
-                          <div>
-                            <dt>Estimativa por unidade</dt>
-                            <dd>
-                              {item.confidential
-                                ? "Orçamento sigiloso"
-                                : amount(item.estimatedUnit, true)}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Estimativa total do item</dt>
-                            <dd>
-                              {item.confidential
-                                ? "Orçamento sigiloso"
-                                : amount(item.estimatedTotal, true)}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Situação na fonte</dt>
-                            <dd>{item.status || "Não informada"}</dd>
-                          </div>
-                        </dl>
-                        {item.hasResult && (
-                          <p className="info-note">
-                            A fonte indica resultado publicado. Os valores acima
-                            continuam sendo estimativas; a consulta de
-                            resultados homologados ainda não está integrada.
-                          </p>
-                        )}
-                      </article>
-                    ))}
+                ) : !visible.length ? (
+                  <div className="info-note">
+                    Nenhum item desta página corresponde ao filtro.{" "}
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setQuery("");
+                        setInterestsOnly(false);
+                      }}
+                    >
+                      Limpar filtro dos itens
+                    </Button>
                   </div>
+                ) : (
+                  <table className="procurement-table">
+                    <caption className="sr-only">
+                      Itens oficiais da página {page}, com estimativas e
+                      unidades publicadas
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Item</th>
+                        <th scope="col">Descrição</th>
+                        <th scope="col">Quantidade</th>
+                        <th scope="col">Unidade</th>
+                        <th scope="col">Estimativa unitária</th>
+                        <th scope="col">Estimativa total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visible.map(({ item, matched, excluded }) => (
+                        <tr key={item.number}>
+                          <th scope="row" data-label="Item">
+                            {item.number}
+                          </th>
+                          <td
+                            data-label="Descrição"
+                            className="procurement-description"
+                          >
+                            {item.description.length > 320 ? (
+                              <details>
+                                <summary>
+                                  <HighlightedText
+                                    text={item.description.slice(0, 200)}
+                                    terms={highlight}
+                                  />
+                                  … <span>Ver descrição completa</span>
+                                </summary>
+                                <p>
+                                  <HighlightedText
+                                    text={item.description}
+                                    terms={highlight}
+                                  />
+                                </p>
+                              </details>
+                            ) : (
+                              <HighlightedText
+                                text={item.description}
+                                terms={highlight}
+                              />
+                            )}
+                            {profile && matched.length > 0 && !excluded && (
+                              <small className="item-interest">
+                                Interesse: {matched.join(", ")}
+                              </small>
+                            )}
+                            {profile && excluded && (
+                              <small className="muted">
+                                Contém termo excluído no perfil
+                              </small>
+                            )}
+                            <small className="muted">
+                              Situação na fonte:{" "}
+                              {item.status || "Não informada"}
+                            </small>
+                            {item.hasResult && (
+                              <small className="muted">
+                                Resultado indicado na fonte; valores abaixo
+                                ainda são estimativas.
+                              </small>
+                            )}
+                          </td>
+                          <td data-label="Quantidade">
+                            {amount(item.quantity)}
+                          </td>
+                          <td data-label="Unidade">
+                            {item.unit || "Não informada"}
+                          </td>
+                          <td data-label="Estimativa unitária">
+                            {item.confidential
+                              ? "Orçamento sigiloso"
+                              : amount(item.estimatedUnit, true)}
+                          </td>
+                          <td data-label="Estimativa total">
+                            {item.confidential
+                              ? "Orçamento sigiloso"
+                              : amount(item.estimatedTotal, true)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
-              <div className="item-pagination">
+                <div className="item-pagination">
                   <Button
                     variant="secondary"
                     disabled={page === 1}
@@ -138,7 +303,7 @@ export function ProcurementItems({ id }: { id: string }) {
                   >
                     Página anterior
                   </Button>
-                  <span>Página {page} · até 25 itens por página</span>
+                  <span>Página {page} · até 25 itens</span>
                   <Button
                     variant="secondary"
                     disabled={!data.hasMore}
@@ -153,6 +318,15 @@ export function ProcurementItems({ id }: { id: string }) {
                     publicação completa na fonte.
                   </p>
                 )}
+                <details className="procurement-help">
+                  <summary>Como interpretar quantidades e valores</summary>
+                  <p>
+                    Uma unidade pode representar página, equipamento, mês ou
+                    serviço. Confira franquias, insumos, duração e atendimento
+                    nos anexos antes de comparar ou simular preços. Valores
+                    ausentes ou sigilosos não equivalem a zero.
+                  </p>
+                </details>
               </>
             )}
           </>

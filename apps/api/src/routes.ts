@@ -31,6 +31,7 @@ import {
   getTracking,
   iso,
   listTrackings,
+  radarPage,
   mapCatalog,
   mapEvent,
   mapTask,
@@ -59,17 +60,54 @@ changeRoutes(router);
 import {workspaceRoutes} from './workspaces.js';
 workspaceRoutes(router);
 import {retryDelivery} from './email-queue.js';
-import {analysisView,enqueueAnalysis} from './edital-analysis.js';
+import {analysisView,enqueueAnalysis,ANALYSIS_ENGINE_VERSION} from './edital-analysis.js';
 import {topics,fingerprint} from './analysis-rules.js';
+import {searchProfileRoutes} from './search-profiles.js';
+searchProfileRoutes(router);
+import {catalogImportRoutes} from './catalog-import.js';
+catalogImportRoutes(router);
+import {companyDetailsRoutes} from './company-details.js';
+companyDetailsRoutes(router);
+import {agencyWatchRoutes} from './agency-watches.js';
+agencyWatchRoutes(router);
+import {proposalRoutes} from './proposals.js';
+proposalRoutes(router);
+import {radarOrderRoutes,lockRadarOrder,bumpRadarOrder,firstRadarPosition} from './radar-order.js';
+radarOrderRoutes(router);
 const id = (value: unknown) => uuid.parse(value);
 const orgId = (req: any) => current(req).organization.id;
+router.get('/user-preferences',async(req,res)=>{
+ const auth=current(req),user=await one('SELECT home_page FROM users WHERE id=$1',[auth.user.id]);
+ const plan=await entitlements(auth.organization.id);
+ const radarAvailable=plan.active&&plan.features.includes('radar');
+ res.json({homePage:user.home_page,radarAvailable,effectiveHomePage:user.home_page==='radar'&&radarAvailable?'radar':'overview'});
+});
+router.put('/user-preferences',async(req,res)=>{
+ const auth=current(req),body=z.object({homePage:z.enum(['overview','radar'])}).strict().parse(req.body);
+ if(body.homePage==='radar'){
+  const plan=await entitlements(auth.organization.id);
+  if(!plan.active||!plan.features.includes('radar'))throw new HttpError(403,'O radar não está disponível no plano desta empresa. Escolha a visão geral.');
+ }
+ await pool.query('UPDATE users SET home_page=$2 WHERE id=$1',[auth.user.id,body.homePage]);
+ res.json(body);
+});
 router.get("/profile", async (req, res) =>
   res.json(await getProfile(current(req))),
 );
 router.get('/getting-started',async(req,res)=>{
   const profile=await getProfile(current(req));
   const radar=await one('SELECT EXISTS(SELECT 1 FROM trackings WHERE organization_id=$1) AS present',[orgId(req)]);
-  res.json({profileReady:profile.segments.length>0||profile.keywords.length>0,radarReady:!!radar?.present});
+  const user=await one('SELECT onboarding_status FROM users WHERE id=$1',[current(req).user.id]);
+  res.json({profileReady:profile.segments.length>0||profile.keywords.length>0,radarReady:!!radar?.present,onboardingStatus:user?.onboarding_status});
+});
+router.post('/getting-started/claim',async(req,res)=>{
+ const result=await pool.query("UPDATE users SET onboarding_status='SEEN' WHERE id=$1 AND onboarding_status='PENDING' RETURNING id",[current(req).user.id]);
+ res.json({claimed:!!result.rowCount});
+});
+router.put('/getting-started',async(req,res)=>{
+ const body=z.object({status:z.enum(['DISMISSED','COMPLETED'])}).strict().parse(req.body);
+ await pool.query("UPDATE users SET onboarding_status=$2 WHERE id=$1 AND onboarding_status='SEEN'",[current(req).user.id,body.status]);
+ res.json({ok:true});
 });
 router.post('/profile/cnpj-suggestion',rateLimit('cnpj-suggestion',10,60000),async(req,res)=>{
   requireAdmin(req);
@@ -82,12 +120,16 @@ router.post('/profile/cnpj-suggestion',rateLimit('cnpj-suggestion',10,60000),asy
 router.put("/profile", async (req, res) => {
   requireAdmin(req);
   const body = profileSchema.parse(req.body);
-  const { organizationName, taxId, ...profile } = body;
-  await pool.query(
-    "UPDATE organizations SET name=$1,tax_id=$2,profile=$3,updated_at=now() WHERE id=$4",
-    [organizationName, taxId, JSON.stringify(profile), orgId(req)],
-  );
-  res.json(body);
+  const { organizationName, taxId, companyRevision, ...profile } = body;
+  const normalizedTaxId=taxId?normalizeCnpj(taxId):null;
+  const result=await transaction(async db=>{
+    const row=await one('SELECT name,tax_id,company_revision FROM organizations WHERE id=$1 FOR UPDATE',[orgId(req)],db);
+    const changed=row.name!==organizationName||row.tax_id!==normalizedTaxId;
+    if(changed&&companyRevision!==row.company_revision)throw new HttpError(409,'A identificação da empresa foi alterada. Recarregue e compare os dados antes de salvar.');
+    const revision=row.company_revision+(changed?1:0);
+    await db.query('UPDATE organizations SET name=$1,tax_id=$2,profile=$3,company_revision=$5,updated_at=now() WHERE id=$4',[organizationName,normalizedTaxId,JSON.stringify(profile),orgId(req),revision]);
+    return {...body,taxId:normalizedTaxId,companyRevision:revision};
+  });res.json(result);
 });
 router.get("/members", async (req, res) =>
   res.json(
@@ -129,40 +171,31 @@ router.get("/catalog", async (req, res) =>
 );
 router.post("/catalog", async (req, res) => {
   const b = catalogSchema.parse(req.body);
+  const created=await transaction(async db=>{
+    await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`catalog-import:${orgId(req)}`]);
+    return one("INSERT INTO catalog(id,organization_id,type,name,description,category,keywords,active,unit,unit_cost,sale_price,price_basis) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *",[randomUUID(),orgId(req),b.type,b.name,b.description,b.category,JSON.stringify(b.keywords),b.active,b.unit,b.unitCost,b.salePrice,b.priceBasis],db);
+  });
   res
     .status(201)
-    .json(
-      mapCatalog(
-        await one(
-          "INSERT INTO catalog(id,organization_id,type,name,description,category,keywords,active) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
-          [
-            randomUUID(),
-            orgId(req),
-            b.type,
-            b.name,
-            b.description,
-            b.category,
-            JSON.stringify(b.keywords),
-            b.active,
-          ],
-        ),
-      ),
-    );
+    .json(mapCatalog(created));
 });
 router.patch("/catalog/:id", async (req, res) => {
   const itemId = id(req.params.id),
     b = catalogSchema.partial().parse(req.body);
   const result = await transaction(async (db) => {
+    await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`catalog-import:${orgId(req)}`]);
     const existing = await one(
       "SELECT * FROM catalog WHERE id=$1 AND organization_id=$2 FOR UPDATE",
       [itemId, orgId(req)],
       db,
     );
     if (!existing) throw new HttpError(404, "Item do catálogo não encontrado.");
-    const item = { ...mapCatalog(existing), ...b };
+    // Zod defaults inside optional fields must not reset omitted PATCH fields.
+    const supplied = Object.fromEntries(Object.entries(b).filter(([key])=>Object.prototype.hasOwnProperty.call(req.body,key)));
+    const item = { ...mapCatalog(existing), ...supplied };
     return mapCatalog(
       await one(
-        "UPDATE catalog SET type=$1,name=$2,description=$3,category=$4,keywords=$5,active=$6,updated_at=now() WHERE id=$7 AND organization_id=$8 RETURNING *",
+        "UPDATE catalog SET type=$1,name=$2,description=$3,category=$4,keywords=$5,active=$6,updated_at=now(),unit=$9,unit_cost=$10,sale_price=$11,price_basis=$12 WHERE id=$7 AND organization_id=$8 RETURNING *",
         [
           item.type,
           item.name,
@@ -172,6 +205,7 @@ router.patch("/catalog/:id", async (req, res) => {
           item.active,
           itemId,
           orgId(req),
+          item.unit, item.unitCost, item.salePrice, item.priceBasis,
         ],
         db,
       ),
@@ -211,6 +245,7 @@ router.put('/opportunities/:id/analysis/:analysisId/review',async(req,res)=>{
  if(latest.id!==analysis.id)throw new HttpError(409,'Versão anterior disponível apenas para consulta.');
  const source=await one('SELECT content_hash,documents FROM opportunities WHERE id=$1',[opportunity.id]);
  if(analysis.source_fingerprint!==fingerprint(source))throw new HttpError(409,'Os dados mudaram. Refaça a leitura antes de revisar esta versão.');
+ if(analysis.result && analysis.result.version!==ANALYSIS_ENGINE_VERSION)throw new HttpError(409,'O mecanismo de leitura foi atualizado. Refaça a leitura antes de revisar.');
  if(!['READY','PARTIAL'].includes(analysis.status))throw new HttpError(409,'Aguarde a conclusão da leitura.');
  await pool.query('INSERT INTO edital_reviews(analysis_id,topic,state,notes,actor_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(analysis_id,topic) DO UPDATE SET state=$3,notes=$4,actor_id=$5,updated_at=now()',[analysis.id,b.topic,b.state,b.notes,current(req).user.id]);
  res.json({ok:true});
@@ -238,17 +273,42 @@ router.post(
 router.get("/trackings", async (req, res) =>
   res.json(await listTrackings(current(req))),
 );
+router.get('/trackings/page',async(req,res)=>{
+ const query=z.object({q:z.string().trim().max(200).default(''),owner:uuid.optional(),highlight:uuid.optional(),includeClosed:z.enum(['true','false']).default('false'),changesOnly:z.enum(['true','false']).default('false'),view:z.enum(['board','list']).default('board'),stage:z.enum(['IDENTIFIED','IN_ANALYSIS','WILL_PARTICIPATE','PROPOSAL_SENT','WON','LOST','DISCARDED']).optional(),page:z.coerce.number().int().min(1).max(10000).default(1)}).strict().parse(req.query);
+ res.json(await radarPage(current(req),{...query,includeClosed:query.includeClosed==='true',changesOnly:query.changesOnly==='true'}));
+});
+router.get('/radar-settings',async(req,res)=>{
+ const row=await one(`SELECT o.default_tracking_owner_id,
+   EXISTS(SELECT 1 FROM members m WHERE m.organization_id=o.id AND m.user_id=o.default_tracking_owner_id AND m.active) available
+   FROM organizations o WHERE o.id=$1`,[orgId(req)]);
+ res.json({defaultOwnerId:row.default_tracking_owner_id,defaultOwnerAvailable:row.available});
+});
+router.put('/radar-settings',async(req,res)=>{
+ requireAdmin(req);const auth=current(req);
+ const body=z.object({defaultOwnerId:uuid.nullable()}).strict().parse(req.body);
+ await transaction(async db=>{
+  await db.query('SELECT id FROM organizations WHERE id=$1 FOR UPDATE',[auth.organization.id]);
+  await ensureOwner(auth,body.defaultOwnerId,db);
+  await db.query('UPDATE organizations SET default_tracking_owner_id=$2,updated_at=now() WHERE id=$1',[auth.organization.id,body.defaultOwnerId]);
+  await db.query('INSERT INTO audit_logs(organization_id,actor_id,action,target) VALUES($1,$2,$3,$4)',[auth.organization.id,auth.user.id,'radar.default-owner.updated',body.defaultOwnerId]);
+ });res.json({defaultOwnerId:body.defaultOwnerId,defaultOwnerAvailable:body.defaultOwnerId!==null});
+});
 router.post("/trackings", async (req, res) => {
   const auth = current(req),
     body = z.object({ opportunityId: uuid }).strict().parse(req.body);
   await getOpportunity(auth, body.opportunityId);
   const trackingId = await transaction(async (db) => {
+    await lockRadarOrder(auth.organization.id,db);
+    const position=await firstRadarPosition(auth.organization.id,'IDENTIFIED',db);
+    const defaultOwner=await one(`SELECT m.user_id,u.name FROM members m JOIN users u ON u.id=m.user_id
+      WHERE m.organization_id=$1 AND m.active AND m.user_id=(SELECT default_tracking_owner_id FROM organizations WHERE id=$1) FOR SHARE OF m`,[auth.organization.id],db);
     const inserted = await one(
-      "INSERT INTO trackings(id,organization_id,opportunity_id) VALUES($1,$2,$3) ON CONFLICT(organization_id,opportunity_id) DO NOTHING RETURNING id",
-      [randomUUID(), auth.organization.id, body.opportunityId],
+      "INSERT INTO trackings(id,organization_id,opportunity_id,owner_id,board_position) VALUES($1,$2,$3,$4,$5) ON CONFLICT(organization_id,opportunity_id) DO NOTHING RETURNING id",
+      [randomUUID(), auth.organization.id, body.opportunityId,defaultOwner?.user_id??null,position],
       db,
     );
     if (inserted) {
+      await bumpRadarOrder(auth.organization.id,db);
       await addEvent(
         inserted.id,
         "CREATED",
@@ -257,14 +317,15 @@ router.post("/trackings", async (req, res) => {
         auth.user.id,
         db,
       );
+      if(defaultOwner)await addEvent(inserted.id,'OWNER_ASSIGNED','Responsável atribuído automaticamente',`${defaultOwner.name} foi atribuído conforme a configuração da empresa.`,auth.user.id,db);
       for (const title of [
         "Ler o edital e validar requisitos",
         "Conferir documentos e certidões",
         "Revisar proposta técnica e preços",
       ])
         await db.query(
-          "INSERT INTO tasks(id,tracking_id,title) VALUES($1,$2,$3)",
-          [randomUUID(), inserted.id, title],
+          "INSERT INTO tasks(id,tracking_id,title,owner_id) VALUES($1,$2,$3,$4)",
+          [randomUUID(), inserted.id, title,defaultOwner?.user_id??null],
         );
       return inserted.id;
     }
@@ -295,12 +356,18 @@ router.patch("/trackings/:id", async (req, res) => {
     notes: "notes",
   };
   await transaction(async (db) => {
+    if(body.stage)await lockRadarOrder(auth.organization.id,db);
     const before = await one(
       "SELECT * FROM trackings WHERE id=$1 AND organization_id=$2 FOR UPDATE",
       [trackingId, auth.organization.id],
       db,
     );
     if (!before) throw new HttpError(404, "Acompanhamento não encontrado.");
+    if(body.stage&&body.stage!==before.stage){
+      const position=await firstRadarPosition(auth.organization.id,body.stage,db);
+      await db.query('UPDATE trackings SET board_position=$2 WHERE id=$1',[trackingId,position]);
+      await bumpRadarOrder(auth.organization.id,db);
+    }
     await ensureOwner(auth, body.ownerId, db);
     // Do not silently carry a previous result category into a new stage.
     if(body.stage && body.stage!==before.stage && body.outcomeCategory===undefined) body.outcomeCategory=null;

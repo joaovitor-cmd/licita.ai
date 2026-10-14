@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy,Suspense,useEffect, useState } from "react";
 import {
   Link,
   NavLink,
@@ -28,31 +28,31 @@ import {
 } from "lucide-react";
 import { api, ApiError, send, useResource } from "./api";
 import type { Notification, Session } from "./types";
-import { ErrorNotice, Loading, SessionContext, ToastProvider } from "./ui";
+import { ErrorNotice, Loading, SessionContext, ToastProvider,useToast } from "./ui";
+import {useDeparture} from './Departure';
 import { AuthPage } from "./pages/Auth";
-import { SimulatorPage } from "./pages/Simulator";
-import {DigestPage} from './pages/Digests';
-import {CommercialPage} from './pages/Commercial';
+const SimulatorPage=lazy(()=>import('./pages/Simulator').then(module=>({default:module.SimulatorPage})));
+const DigestPage=lazy(()=>import('./pages/Digests').then(module=>({default:module.DigestPage})));
+const CommercialPage=lazy(()=>import('./pages/Commercial').then(module=>({default:module.CommercialPage})));
 import {ThemeToggle} from './theme';
 import {
   DashboardPage,
   OpportunitiesPage,
   OpportunityPage,
 } from "./pages/Discovery";
-import { RadarPage, TrackingPage } from "./pages/Radar";
-import {
-  CatalogPage,
-  DocumentsPage,
-  ProfilePage,
-  SourcesPage,
-  NotificationsPage,
-  SettingsPage,
-} from "./pages/Operations";
+const RadarPage=lazy(()=>import('./pages/Radar').then(module=>({default:module.RadarPage})));
+const TrackingPage=lazy(()=>import('./pages/Radar').then(module=>({default:module.TrackingPage})));
+const CatalogPage=lazy(()=>import('./pages/Operations').then(module=>({default:module.CatalogPage})));
+const DocumentsPage=lazy(()=>import('./pages/Operations').then(module=>({default:module.DocumentsPage})));
+const ProfilePage=lazy(()=>import('./pages/Operations').then(module=>({default:module.ProfilePage})));
+const SourcesPage=lazy(()=>import('./pages/Operations').then(module=>({default:module.SourcesPage})));
+const NotificationsPage=lazy(()=>import('./pages/Operations').then(module=>({default:module.NotificationsPage})));
+const SettingsPage=lazy(()=>import('./pages/Operations').then(module=>({default:module.SettingsPage})));
 import {WorkspaceSelector} from './pages/Management';
 import {FirstSteps} from './FirstSteps';
+import {PreferredHome} from './pages/UserPreferences';
 const nav = [
-  { to: "/app", label: "Visão geral", icon: LayoutDashboard, end: true },
-  { to: "/app/primeiros-passos", label: "Primeiros passos", icon: Compass },
+  { to: "/app/visao-geral", label: "Visão geral", icon: LayoutDashboard, end: true },
   { to: "/app/oportunidades", label: "Oportunidades", icon: Compass },
   { to: "/app/radar", label: "Meu radar", icon: Radio },
   { to: "/app/comercial", label: "Histórico comercial", icon: LayoutDashboard },
@@ -60,8 +60,11 @@ const nav = [
   { to: "/app/catalogo", label: "Catálogo", icon: Package },
   { to: "/app/documentos", label: "Documentos", icon: FileStack },
   { to: "/app/perfil", label: "Perfil comercial", icon: SlidersHorizontal },
+  { to: "/app/empresa", label: "Dados da empresa", icon: Building2 },
   { to: "/app/fontes", label: "Fontes de dados", icon: Building2 },
 ];
+const CompanyDetailsPage=lazy(()=>import('./pages/CompanyDetails'));
+const AgencyWatchesPage=lazy(()=>import('./pages/AgencyWatches'));
 export function Brand({ light = false }: { light?: boolean }) {
   return (
     <span className={`brand ${light ? "brand-light" : ""}`}>
@@ -83,14 +86,16 @@ function Shell({
   session: Session;
   refresh: () => Promise<void>;
 }) {
-  const [mobile, setMobile] = useState(false),
+  const [mobilePath, setMobilePath] = useState<string|null>(null),
     [narrow, setNarrow] = useState(
       () => window.matchMedia("(max-width:1020px)").matches,
     ),
     [userOpen, setUserOpen] = useState(false),
     [search, setSearch] = useState("");
   const navigate = useNavigate();
+  const departure=useDeparture(),toast=useToast();
   const location = useLocation();
+  const mobile=mobilePath===location.pathname;
   const notices = useResource<Notification[]>("/notifications");
   const rights=useResource<{features:string[]}>('/entitlements');
   const navFeature:Record<string,string>={'/app/oportunidades':'discovery','/app/radar':'radar','/app/comercial':'commercialHistory','/app/simulador':'simulator','/app/catalogo':'catalog','/app/documentos':'documents'};
@@ -102,15 +107,17 @@ function Shell({
   }, []);
   const unread = notices.data?.filter((n) => !n.read).length || 0;
   useEffect(() => {
-    setMobile(false);
+    // Lazy navigation may commit after the address changes. Keep an explicit
+    // menu opening for that current address, rather than closing it afterward.
+    setMobilePath(path=>path===window.location.pathname?path:null);
     setUserOpen(false);
-    notices.reload();
   }, [location.pathname]);
+  useEffect(()=>{notices.reload();},[location.pathname]);
   useEffect(() => {
     const close = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setUserOpen(false);
-        setMobile(false);
+        setMobilePath(null);
       }
     };
     document.addEventListener("keydown", close);
@@ -123,7 +130,7 @@ function Shell({
           <button
             aria-label="Fechar menu"
             className="sidebar-scrim"
-            onClick={() => setMobile(false)}
+            onClick={() => setMobilePath(null)}
           />
         )}
         <aside
@@ -137,7 +144,7 @@ function Shell({
           <button
             className="sidebar-close icon-button"
             aria-label="Fechar menu"
-            onClick={() => setMobile(false)}
+            onClick={() => setMobilePath(null)}
           >
             <X size={20} />
           </button>
@@ -178,14 +185,6 @@ function Shell({
             ))}
           </nav>
           <div className="sidebar-bottom">
-            <div className="sidebar-tip">
-              <span className="tip-dot" />
-              <strong>Da descoberta à decisão.</strong>
-              <p>Seu próximo contrato começa com uma boa oportunidade.</p>
-              <Link to="/app/oportunidades">
-                Explorar oportunidades <Compass size={14} />
-              </Link>
-            </div>
             <NavLink to="/app/configuracoes" className="nav-item">
               <Settings size={18} />
               <span>Configurações</span>
@@ -200,7 +199,7 @@ function Shell({
             <button
               className="icon-button mobile-menu"
               aria-label="Abrir menu"
-              onClick={() => setMobile(true)}
+              onClick={() => setMobilePath(window.location.pathname)}
             >
               <Menu size={22} />
             </button>
@@ -212,7 +211,7 @@ function Shell({
                     ? location.pathname === n.to
                     : location.pathname.startsWith(n.to),
                 )?.label ||
-                  (location.pathname.includes("notificacoes")
+                  (location.pathname.includes("monitoramentos") ? "Órgãos monitorados" : location.pathname.includes("notificacoes")
                     ? "Notificações"
                     : "Configurações")}
               </strong>
@@ -272,9 +271,10 @@ function Shell({
                     <Settings size={15} /> Minha conta
                   </Link>
                   <button
+                    disabled={departure.departing}
                     onClick={async () => {
-                      await send("/auth/logout", "POST");
-                      refresh();
+                      try{await departure.run(async commit=>{await send("/auth/logout", "POST");commit();await refresh();},'Sair da plataforma?');}
+                      catch(error){toast((error as Error).message,true);}
                     }}
                   >
                     <LogOut size={15} /> Sair da plataforma
@@ -296,7 +296,7 @@ function Shell({
           )}
           <main className="page-content" id="main-content">
             <FirstSteps key={`${session.user.id}:${session.organization.id}`} />
-            <Outlet />
+            <Suspense fallback={<Loading label="Abrindo tela…"/>}><Outlet /></Suspense>
           </main>
           <footer className="app-footer">
             <span>
@@ -369,7 +369,8 @@ export function App() {
             )
           }
         >
-          <Route index element={<DashboardPage />} />
+          <Route index element={<PreferredHome />} />
+          <Route path="visao-geral" element={<DashboardPage />} />
           <Route path="oportunidades" element={<OpportunitiesPage />} />
           <Route path="oportunidades/:id" element={<OpportunityPage />} />
           <Route path="radar" element={<RadarPage />} />
@@ -378,7 +379,9 @@ export function App() {
           <Route path="catalogo" element={<CatalogPage />} />
           <Route path="documentos" element={<DocumentsPage />} />
           <Route path="perfil" element={<ProfilePage />} />
-          <Route path="primeiros-passos" element={null} />
+          <Route path="empresa" element={<Suspense fallback={<Loading/>}><CompanyDetailsPage/></Suspense>} />
+          <Route path="monitoramentos" element={<Suspense fallback={<Loading/>}><AgencyWatchesPage/></Suspense>} />
+          <Route path="primeiros-passos" element={<Navigate to="/app" replace />} />
           <Route path="fontes" element={<SourcesPage />} />
           <Route path="notificacoes" element={<NotificationsPage />} />
           <Route path="configuracoes" element={<SettingsPage />} />

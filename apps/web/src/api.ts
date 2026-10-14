@@ -56,7 +56,7 @@ export function useResource<T>(path: string) {
     setLoading(true);
     setError("");
     api<T>(path, { signal: controller.signal })
-      .then(setData)
+      .then(result => { if (!controller.signal.aborted) setData(result); })
       .catch((e) => {
         if (!controller.signal.aborted) setError(e.message);
       })
@@ -68,7 +68,7 @@ export function useResource<T>(path: string) {
   return { data, loading, error, reload, setData };
 }
 export const currency = (value: number | null | undefined, compact = false) =>
-  value == null
+  value == null || !Number.isFinite(value)
     ? "Não informado"
     : new Intl.NumberFormat("pt-BR", {
         style: "currency",
@@ -79,7 +79,7 @@ export const currency = (value: number | null | undefined, compact = false) =>
           : {}),
       }).format(value);
 export const date = (value: string | null | undefined, time = false) =>
-  !value
+  !value || !Number.isFinite(Date.parse(value))
     ? "Não informado"
     : new Intl.DateTimeFormat("pt-BR", {
         timeZone: "America/Sao_Paulo",

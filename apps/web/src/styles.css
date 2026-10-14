@@ -1198,6 +1198,24 @@ hr,
 .activity-item:last-child {
   padding-bottom: 0;
 }
+.activity-item > div {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.activity-panel .activity-item p {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+  white-space: normal;
+}
+.activity-details-button { display: block; margin-top: 6px; font-size: 12px; }
+.activity-detail-content { padding: 20px 24px 24px; min-width: 0; }
+.activity-detail-intro { margin: 0 0 18px; line-height: 1.6; }
+.activity-change-list { display: grid; gap: 12px; list-style: none; padding: 0; margin: 0; }
+.activity-change-list li { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid #8993aa44; border-radius: 10px; }
+.activity-change-list li strong { font-size: 12px; }
+.activity-change-list li span { line-height: 1.55; overflow-wrap: anywhere; }
 .activity-item:before {
   content: "";
   position: absolute;

@@ -1,0 +1,156 @@
+.commercial-proposals {
+  min-width: 0;
+}
+.proposal-heading,
+.proposal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.proposal-heading > div {
+  flex: 1;
+  min-width: 200px;
+}
+.proposal-actions {
+  justify-content: flex-start;
+  margin: 14px 0;
+}
+.proposal-editor {
+  border: 0;
+  padding: 0;
+  margin: 20px 0;
+  min-width: 0;
+}
+.proposal-editor legend {
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin-bottom: 12px;
+}
+.commercial-proposals label {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+  min-width: 0;
+}
+.commercial-proposals input,
+.commercial-proposals select,
+.commercial-proposals textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.proposal-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 8px 12px;
+}
+.proposal-lines {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+}
+.proposal-lines article,
+.proposal-picker {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  min-width: 0;
+}
+.proposal-description,
+.proposal-saved-list strong,
+.proposal-conditions-view dd {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.proposal-saved-list {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+.proposal-saved-list button {
+  text-align: left;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: inherit;
+  min-width: 0;
+  cursor: pointer;
+}
+.proposal-saved-list span {
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.commercial-proposals .proposal-source-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.commercial-proposals .proposal-source-item input,
+.commercial-proposals .proposal-checks input {
+  width: 16px;
+  flex: none;
+  margin-top: 3px;
+}
+.proposal-source-item > span {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.commercial-proposals .proposal-checks label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.proposal-total {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+.proposal-catalog-option {padding:12px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere;}
+.proposal-conditions-view {
+  display: grid;
+  gap: 12px;
+}
+.proposal-conditions-view dt {
+  font-weight: 700;
+}
+.proposal-conditions-view dd {
+  margin: 4px 0;
+}
+@media (max-width: 600px) {
+  .proposal-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .proposal-lines article,
+  .proposal-picker {
+    padding: 10px;
+  }
+  .proposal-heading > div {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+  .proposal-actions .button {
+    max-width: 100%;
+  }
+  .proposal-total {
+    overflow-wrap: anywhere;
+  }
+}
+.proposal-editor .proposal-reference-confirmation {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+}
+.proposal-editor .proposal-reference-confirmation input[type="checkbox"] {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  margin-top: 3px;
+}

@@ -239,7 +239,7 @@ export async function createDemo(db: Database) {
     if (stage) {
       const tid = randomUUID();
       await db.query(
-        `INSERT INTO trackings(id,organization_id,opportunity_id,stage,owner_id,deadline,expected_value,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+        `INSERT INTO trackings(id,organization_id,opportunity_id,stage,owner_id,deadline,expected_value,notes,board_position) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
         [
           tid,
           orgId,
@@ -249,6 +249,7 @@ export async function createDemo(db: Database) {
           day(Math.max(1, Number(days) - 2)),
           value,
           "Registro fictício. Revise as exigências do edital e confirme documentos antes de participar.",
+          -index*1024,
         ],
       );
       for (const [i, title] of [

@@ -34,6 +34,9 @@ app.use(
   }),
 );
 app.use(protectOrigin);
+// Only bounded catalog imports need a larger body; keep the general API limit.
+app.use('/api/catalog/import', express.json({limit:'2mb'}));
+app.use('/api/proposals', express.json({limit:'512kb'}));
 app.use(express.json({ limit: "200kb" }));
 app.use(cookieParser());
 app.use((req, res, next) => {

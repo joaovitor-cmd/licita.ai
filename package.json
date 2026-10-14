@@ -19,6 +19,18 @@
     "test": "npm run test --workspaces --if-present",
     "test:integration": "node --test tests/api.test.mjs",
     "test:browser": "node tests/browser.mjs",
+    "test:workflow:api": "node scripts/qa-workflow.mjs",
+    "test:workflow:browser": "node --test --test-concurrency=1 --import tsx tests/first-steps-browser.ts tests/workflow-browser.mjs tests/opportunity-reading-browser.mjs tests/search-filter-summary-browser.mjs tests/search-profile-union-browser.mjs tests/radar-pagination-browser.mjs tests/user-preferences-browser.mjs tests/procurement-items-browser.mjs tests/activity-layout-browser.mjs tests/source-checklist-browser.mjs tests/catalog-import-browser.mjs tests/company-details-browser.mjs tests/analysis-progress-browser.mjs tests/agency-watches-browser.mjs tests/proposals-browser.mjs tests/proposal-navigation-browser.mjs tests/proposal-departure-browser.mjs tests/proposal-references-browser.mjs",
+    "test:proposal:navigation": "node --import tsx --test tests/proposal-navigation-browser.mjs tests/proposal-departure-browser.mjs",
+    "test:search:profiles": "node --import tsx --test apps/api/src/search-filter-sql.test.ts tests/search-profile-union-browser.mjs",
+    "test:search:filters": "node --import tsx --test tests/search-filter-summary.test.mjs",
+    "test:opportunity:reading": "node --import tsx --test tests/opportunity-reading.test.mjs",
+    "test:radar:order": "node --import tsx --test apps/api/src/radar-order.test.ts tests/radar-order.test.mjs",
+    "test:proposal:values": "node --import tsx --test tests/proposal-values.test.mjs",
+    "test:item:interests": "node --import tsx --test tests/item-interest.test.mjs",
+    "test:proposal:comparison": "node --import tsx --test tests/proposal-comparison.test.mjs",
+    "test:proposal:references": "node --import tsx --test tests/proposal-references-browser.mjs",
+    "test:catalog:csv": "node --import tsx --test tests/catalog-csv.test.mjs",
     "db:up": "docker compose up -d postgres mailpit"
   },
   "devDependencies": {

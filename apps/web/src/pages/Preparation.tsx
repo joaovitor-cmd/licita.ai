@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { date, safeUrl, send, useResource } from "../api";
 import { Button, ErrorNotice, Field, useToast } from "../ui";
-import {ChecklistTemplates} from './ChecklistTemplates';
+import { ChecklistTemplates } from "./ChecklistTemplates";
 export const preparationChanged = () =>
   window.dispatchEvent(new Event("preparation-changed"));
 type Evidence = {
@@ -25,7 +25,7 @@ type Requirement = {
 };
 type LibraryDoc = { id: string; name: string };
 type Preparation = {
-  tasks: {title:string}[];
+  tasks: { title: string }[];
   documents: Requirement[];
   trackingId: string | null;
   summary: {
@@ -46,7 +46,20 @@ const states: Record<string, string> = {
   REVIEWED: "Conferido pelo responsável",
   UPDATE: "Precisa atualizar",
 };
-export function PreparationPanel({ opportunityId }: { opportunityId: string }) {
+export function DocumentChecklist({
+  opportunityId,
+}: {
+  opportunityId: string;
+}) {
+  return <PreparationPanel opportunityId={opportunityId} checklistOnly />;
+}
+function PreparationPanel({
+  opportunityId,
+  checklistOnly = false,
+}: {
+  opportunityId: string;
+  checklistOnly?: boolean;
+}) {
   const resource = useResource<Preparation>(
     `/opportunities/${opportunityId}/preparation`,
   );
@@ -62,14 +75,13 @@ export function PreparationPanel({ opportunityId }: { opportunityId: string }) {
     };
     window.addEventListener("preparation-changed", refresh);
     window.addEventListener("focus", focus);
-    const timer = setInterval(refresh, 15000);
     return () => {
-      clearInterval(timer);
       window.removeEventListener("preparation-changed", refresh);
       window.removeEventListener("focus", focus);
     };
   }, [resource.reload, library.reload]);
   async function add() {
+    if (busy) return;
     setBusy(true);
     try {
       await send(
@@ -90,59 +102,81 @@ export function PreparationPanel({ opportunityId }: { opportunityId: string }) {
     return <ErrorNotice message={resource.error} onRetry={resource.reload} />;
   if (!resource.data) return <p role="status">Carregando preparação…</p>;
   const { summary: s, documents, trackingId } = resource.data;
+  const ChecklistBody = checklistOnly ? "div" : "details";
   return (
     <section
-      className="card preparation-panel"
-      aria-label="Preparação da oportunidade"
+      className={
+        checklistOnly ? "document-checklist" : "card preparation-panel"
+      }
+      aria-label={
+        checklistOnly ? "Checklist documental" : "Preparação da oportunidade"
+      }
     >
-      <span className="overline">SEU PLANO DE PARTICIPAÇÃO</span>
-      <h2>Preparação em andamento</h2>
-      <p>
-        {s.pendingTopics} temas aguardam revisão ·{" "}
-        {s.documentCount
-          ? `${s.pendingDocuments} de ${s.documentCount} itens documentais pendentes`
-          : "Checklist documental ainda não definido"}{" "}
-        ·{" "}
-        {s.simulationCount
-          ? `${s.simulationCount} simulação(ões) registrada(s)`
-          : "Simulação ainda não registrada"}{" "}
-        · {s.pendingTasks} tarefas pendentes
-      </p>
-      <p className="info-note">
-        <strong>Próximo passo sugerido:</strong> {s.nextAction}
-      </p>
-      <p className="muted small">
-        Este resumo retrata os registros da equipe, não habilitação ou chance de
-        ganhar. Uma simulação salva não comprova viabilidade.
-        {s.incompleteAttachments
-          ? " A cobertura dos anexos ainda exige conferência manual."
-          : ""}
-        {s.stale ? " A leitura está desatualizada." : ""}
-      </p>
-      <div className="button-row">
-        <Link to={`/app/simulador?opportunityId=${opportunityId}`}>
-          Revisar simulação
-        </Link>
-        {trackingId && (
-          <Link to={`/app/radar/${trackingId}`}>
-            Abrir tarefas e responsáveis
-          </Link>
+      {checklistOnly ? (
+        <>
+          <h2>Checklist documental</h2>
+          <p className="muted">
+            {documents.length} exigência(s) cadastrada(s). Confirme documentos e
+            requisitos antes do envio.
+          </p>
+        </>
+      ) : (
+        <>
+          <span className="overline">SEU PLANO DE PARTICIPAÇÃO</span>
+          <h2>Preparação em andamento</h2>
+          <p>
+            {s.pendingTopics} temas aguardam revisão ·{" "}
+            {s.documentCount
+              ? `${s.pendingDocuments} de ${s.documentCount} itens documentais pendentes`
+              : "Checklist documental ainda não definido"}{" "}
+            ·{" "}
+            {s.simulationCount
+              ? `${s.simulationCount} simulação(ões) registrada(s)`
+              : "Simulação ainda não registrada"}{" "}
+            · {s.pendingTasks} tarefas pendentes
+          </p>
+          <p className="info-note">
+            <strong>Próximo passo sugerido:</strong> {s.nextAction}
+          </p>
+          <p className="muted small">
+            Este resumo retrata os registros da equipe, não habilitação ou
+            chance de ganhar. Uma simulação salva não comprova viabilidade.
+            {s.incompleteAttachments
+              ? " A cobertura dos anexos ainda exige conferência manual."
+              : ""}
+            {s.stale ? " A leitura está desatualizada." : ""}
+          </p>
+          <div className="button-row">
+            <Link to={`/app/simulador?opportunityId=${opportunityId}`}>
+              Revisar simulação
+            </Link>
+            {trackingId && (
+              <Link to={`/app/radar/${trackingId}`}>
+                Abrir tarefas e responsáveis
+              </Link>
+            )}
+            <Button
+              variant="ghost"
+              onClick={() => {
+                resource.reload();
+                library.reload();
+              }}
+            >
+              Atualizar preparação
+            </Button>
+          </div>
+        </>
+      )}
+      <ChecklistTemplates
+        opportunityId={opportunityId}
+        onApplied={resource.reload}
+      />
+      <ChecklistBody id="checklist-documental">
+        {!checklistOnly && (
+          <summary>
+            Checklist documental · {documents.length} exigência(s)
+          </summary>
         )}
-        <Button
-          variant="ghost"
-          onClick={() => {
-            resource.reload();
-            library.reload();
-          }}
-        >
-          Atualizar preparação
-        </Button>
-      </div>
-      <ChecklistTemplates opportunityId={opportunityId} onApplied={resource.reload}/>
-      <details id="checklist-documental">
-        <summary>
-          Checklist documental · {documents.length} exigência(s)
-        </summary>
         <p>
           Cadastre apenas o que você identificou ao conferir o edital. Vincular
           um arquivo não significa que ele atende à exigência.
@@ -190,7 +224,7 @@ export function PreparationPanel({ opportunityId }: { opportunityId: string }) {
             onSaved={resource.reload}
           />
         ))}
-      </details>
+      </ChecklistBody>
     </section>
   );
 }

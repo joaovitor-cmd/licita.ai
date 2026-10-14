@@ -10,8 +10,13 @@ export interface Session {
   isPlatformAdmin?: boolean;
 }
 export interface Opportunity {
+  matchedSearchProfiles?: {id:string;name:string;revision:number}[];
   id: string;
+  publicCode: string | null;
   canonicalKey: string;
+  editalNumber: string | null;
+  uasg: string | null;
+  capag: string | null;
   title: string;
   description: string | null;
   agency: string;
@@ -57,7 +62,9 @@ export type Stage =
   | "LOST"
   | "DISCARDED";
 export interface Tracking {
+  boardPosition?: string;
   id: string;
+  pendingChanges?: number;
   opportunityId: string;
   opportunity: Opportunity;
   stage: Stage;
@@ -87,8 +94,13 @@ export interface Offering {
   keywords: string[];
   active: boolean;
   updatedAt: string;
+  unit?: string | null;
+  unitCost?: number | null;
+  salePrice?: number | null;
+  priceBasis?: 'PER_UNIT' | 'ONE_TIME' | 'MONTHLY' | 'YEARLY' | null;
 }
 export interface Profile {
+  companyRevision?:number;
   organizationName: string;
   taxId: string;
   segments: string[];

@@ -11,9 +11,10 @@ export async function entitlements(org:string,db:Database=pool){
 }
 export function routeFeature(path:string):string|null{
  if(/^\/opportunities\/[^/]+\/(analysis)/.test(path))return 'analysis';
+ if(/^\/proposals|^\/opportunities\/[^/]+\/proposal/.test(path))return 'discovery';
  if(/^\/opportunities\/[^/]+\/changes|^\/opportunity-relations|^\/change-alert/.test(path))return 'changeAlerts';
- if(/^\/opportunities\/[^/]+\/(preparation|checklist)|^\/checklist|^\/trackings/.test(path))return 'radar';
- if(/^\/opportunities/.test(path))return 'discovery';
+ if(/^\/opportunities\/[^/]+\/(preparation|checklist)|^\/checklist|^\/trackings|^\/radar-settings/.test(path))return 'radar';
+ if(/^\/opportunities|^\/search-profiles|^\/agency-watches/.test(path))return 'discovery';
  if(/^\/catalog/.test(path))return 'catalog';
  if(/^\/documents/.test(path))return 'documents';
  if(/^\/simulation/.test(path))return 'simulator';

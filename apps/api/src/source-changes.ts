@@ -4,6 +4,7 @@ import {one,rows,type Database} from './db.js';
 import {addEvent} from './data.js';
 import {enqueueEmail} from './email-queue.js';
 import {changeSettings,changeLabels,classifyChanges,relationEvidence,statusKind,type ChangeType} from './change-rules.js';
+import {sourceChangeSummary} from './source-change-message.js';
 
 async function alert(db:Database,orgId:string,types:ChangeType[],title:string,body:string,url:string,key:string){
  const plan=await entitlements(orgId,db);if(!plan.active||!plan.features.includes('changeAlerts'))return;
@@ -22,7 +23,8 @@ export async function recordSourceChange(db:Database,opportunityId:string,before
  await db.query('INSERT INTO opportunity_changes(id,opportunity_id,types,before_data,after_data) VALUES($1,$2,$3,$4,$5)',[id,opportunityId,JSON.stringify(types),JSON.stringify(before),JSON.stringify(after)]);
  const tracked=await rows('SELECT id,organization_id FROM trackings WHERE opportunity_id=$1',[opportunityId],db);
  const title=types.filter(t=>t!=='OTHER'&&t!=='STATUS').map(t=>changeLabels[t]).join(' · ')||'Alteração em edital acompanhado';
- const body=`${after.title}\nSituação: ${before.status??'Não informada'} → ${after.status??'Não informada'}\n${description.slice(0,12000)}\nDetectado em ${new Date().toISOString()}. Confira a publicação oficial; o aviso não é análise jurídica.`;
+ const heading=typeof after.title==='string'?after.title.replace(/https?:\/\/\S+/gi,'').replace(/\s+/g,' ').trim().slice(0,200):'Edital acompanhado';
+ const body=`${heading}\n${sourceChangeSummary(before,after)}\nConfira a publicação oficial; o aviso não é análise jurídica.`;
  for(const t of tracked){
   await addEvent(t.id,'SOURCE_UPDATED',title,description.slice(0,20000),null,db);
   await alert(db,t.organization_id,types,title,body,`/app/oportunidades/${opportunityId}?tab=mudancas`,`source-change:${id}`);

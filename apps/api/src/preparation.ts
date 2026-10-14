@@ -4,9 +4,10 @@ import { z } from "zod";
 import { current, HttpError } from "./security.js";
 import { one, rows, transaction } from "./db.js";
 import { getOpportunity, addEvent } from "./data.js";
-import { analysisView } from "./edital-analysis.js";
+import { analysisView, ANALYSIS_ENGINE_VERSION } from "./edital-analysis.js";
 import { fingerprint, topics } from "./analysis-rules.js";
 import { documentState } from "./preparation-rules.js";
+import {lockRadarOrder,ensureOrderedTracking} from './radar-order.js';
 const uuid = z.string().uuid();
 const title = z.string().trim().min(3).max(240);
 const topicKey = z.string().refine((v) => topics.some((t) => t.key === v));
@@ -108,6 +109,7 @@ export function preparationRoutes(router: Router) {
       .strict()
       .parse(req.body);
     const result = await transaction(async (db) => {
+      await lockRadarOrder(org,db);
       const source = await one(
         "SELECT content_hash,documents FROM opportunities WHERE id=$1 FOR UPDATE",
         [oid],
@@ -122,6 +124,7 @@ export function preparationRoutes(router: Router) {
         !a ||
         a.id !== b.analysisId ||
         a.source_fingerprint !== fingerprint(source) ||
+        a.result?.version !== ANALYSIS_ENGINE_VERSION ||
         !["READY", "PARTIAL"].includes(a.status)
       )
         throw new HttpError(
@@ -173,15 +176,7 @@ export function preparationRoutes(router: Router) {
           ))
         );
       }
-      await db.query(
-        "INSERT INTO trackings(id,organization_id,opportunity_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
-        [randomUUID(), org, oid],
-      );
-      const tracking = await one(
-        "SELECT id FROM trackings WHERE organization_id=$1 AND opportunity_id=$2",
-        [org, oid],
-        db,
-      );
+      const tracking = await ensureOrderedTracking(org,oid,db);
       const inserted = await one(
         `INSERT INTO tasks(id,tracking_id,title,source_analysis_id,source_topic,source_evidence) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING id`,
         [

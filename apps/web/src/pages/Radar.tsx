@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {DocumentChecklist} from './Preparation';
+import {ActivityItem} from '../ActivityItem';
 import {
   ArrowRight,
   CalendarClock,
@@ -19,7 +21,10 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { RadarBoard } from "./RadarBoard";
+import { RadarSettings } from './RadarSettings';
+import {useRadarPagination} from '../useRadarPagination';
 import { currency, date, dateInput, dateTimeInput, safeUrl, send, useResource } from "../api";
 import type { Member, Stage, Task, Tracking } from "../types";
 import { STAGES } from "../types";
@@ -38,65 +43,57 @@ import {
   Score,
   StageBadge,
   useToast,
+  useSession,
 } from "../ui";
 export function RadarPage() {
-  const { data, loading, error, reload } =
-    useResource<Tracking[]>("/trackings");
+  const {session}=useSession();
+  const [settingsOpen,setSettingsOpen]=useState(false);
+  const [params] = useSearchParams();
+  const [quickTask, setQuickTask] = useState<Tracking | null>(null);
   const members = useResource<Member[]>("/members");
-  const [view, setView] = useState("board"),
+  const [view, setView] = useState<'board'|'list'>("board"),
+    [page,setPage] = useState(1),[search,setSearch] = useState(''),
     [q, setQ] = useState(""),
     [owner, setOwner] = useState(""),
-    [archived, setArchived] = useState(false);
-  const items = (data || []).filter(
-    (t) =>
-      (!q ||
-        `${t.opportunity.title} ${t.opportunity.agency}`
-          .toLowerCase()
-          .includes(q.toLowerCase())) &&
-      (!owner || t.ownerId === owner),
-  );
-  const active = (data || []).filter(
-    (t) => !["WON", "LOST", "DISCARDED"].includes(t.stage),
-  );
-  const stages = archived ? STAGES : STAGES.slice(0, 5);
+    [changesOnly,setChangesOnly] = useState(false),
+    [archived, setArchived] = useState(Boolean(params.get("highlight")));
+  useEffect(()=>{const timer=setTimeout(()=>{setSearch(q.trim());setPage(1);},250);return()=>clearTimeout(timer);},[q]);
+  const highlight=params.get('highlight');
+  const query=new URLSearchParams({view,q:search,includeClosed:String(archived),changesOnly:String(changesOnly),page:String(view==='board'?1:page),...(owner?{owner}:{}),...(highlight&&/^[0-9a-f-]{36}$/i.test(highlight)?{highlight}:{})}).toString();
+  const {data,loading,refreshing,error,reload,busy,columnErrors,more}=useRadarPagination(query);
+  const items=data?.items||[];
+  const stages = archived ? STAGES : STAGES.filter(stage=>!['WON','LOST','DISCARDED'].includes(stage.value));
   return (
     <>
       <PageHeader
         eyebrow="GESTÃO DE PARTICIPAÇÕES"
         title="Meu radar"
         description="Da primeira análise ao resultado. Tudo o que sua equipe precisa acompanhar."
-        actions={
+        actions={<>
+          {session.role==='ADMIN'&&<Button type="button" variant="secondary" onClick={()=>setSettingsOpen(true)}><UserRound size={16}/> Responsável padrão</Button>}
           <Link className="button primary" to="/app/oportunidades">
             <Plus size={17} /> Adicionar oportunidade
           </Link>
-        }
+        </>}
       />
       <div className="radar-summary">
         <div>
           <span className="overline">EM ANDAMENTO</span>
           <strong>
-            {active.length} <small>participações</small>
+            {loading?'…':data?.summary.active??0} <small>participações nos filtros</small>
           </strong>
         </div>
         <div>
           <span className="overline">VALOR POTENCIAL EM ANDAMENTO</span>
           <strong>
-            {currency(
-              active.reduce(
-                (sum, t) => sum + (t.expectedValue ?? t.opportunity.value ?? 0),
-                0,
-              ),
-              true,
-            )}
+            {loading?'…':currency(data?.summary.potential,true)}
           </strong>
+          {!!data?.summary.unknownValues&&<small>{data.summary.unknownValues} sem valor informado · soma parcial</small>}
         </div>
         <div>
           <span className="overline">TAREFAS PENDENTES</span>
           <strong>
-            {active.reduce(
-              (sum, t) => sum + t.tasks.filter((task) => !task.done).length,
-              0,
-            )}{" "}
+            {loading?'…':data?.summary.pendingTasks??0}{" "}
             <small>próximas ações</small>
           </strong>
         </div>
@@ -106,6 +103,7 @@ export function RadarPage() {
           <Search size={16} />
           <input
             aria-label="Buscar no radar"
+            maxLength={200}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar no radar…"
@@ -114,7 +112,7 @@ export function RadarPage() {
         <select
           aria-label="Filtrar responsável"
           value={owner}
-          onChange={(e) => setOwner(e.target.value)}
+          onChange={(e) => {setOwner(e.target.value);setPage(1);}}
         >
           <option value="">Todos os responsáveis</option>
           {members.data?.map((m) => (
@@ -123,15 +121,16 @@ export function RadarPage() {
             </option>
           ))}
         </select>
-        <CheckRow checked={archived} onChange={setArchived}>
-          Incluir perdidas e descartadas
+        <CheckRow checked={archived} onChange={value=>{setArchived(value);setPage(1);}}>
+          Incluir etapas encerradas
         </CheckRow>
+        <CheckRow checked={changesOnly} onChange={value=>{setChangesOnly(value);setPage(1);}}>Só alterações para conferir</CheckRow>
         <div className="view-toggle">
           <button
             aria-label="Visualização em quadro"
             aria-pressed={view === "board"}
             className={view === "board" ? "active" : ""}
-            onClick={() => setView("board")}
+            onClick={() => {setView("board");setPage(1);}}
           >
             <Columns3 size={17} />
           </button>
@@ -139,17 +138,19 @@ export function RadarPage() {
             aria-label="Visualização em lista"
             aria-pressed={view === "list"}
             className={view === "list" ? "active" : ""}
-            onClick={() => setView("list")}
+            onClick={() => {setView("list");setPage(1);}}
           >
             <List size={18} />
           </button>
         </div>
       </div>
+      {refreshing&&<p className="muted small" role="status">Atualizando o radar…</p>}
+      {error&&data&&<ErrorNotice message={error} onRetry={reload}/>}
       {loading ? (
         <Loading />
-      ) : error ? (
+      ) : error&&!data ? (
         <ErrorNotice message={error} onRetry={reload} />
-      ) : !data?.length ? (
+      ) : !data?.total&&!search&&!owner&&!changesOnly ? (
         <div className="card">
           <Empty
             icon={<Radio size={31} />}
@@ -162,89 +163,17 @@ export function RadarPage() {
             }
           />
         </div>
+      ) : !items.some(t => stages.some(s => s.value === t.stage))&&!(view==='list'&&data?.total) ? (
+        <div className="card"><Empty title="Nenhuma participação com estes filtros" description="Altere a busca, o responsável ou inclua as etapas encerradas." /></div>
       ) : view === "board" ? (
-        <div className="kanban" aria-label="Quadro de participações por etapa">
-          {stages.map((stage) => {
-            const column = items.filter((t) => t.stage === stage.value);
-            return (
-              <section
-                className={`kanban-column column-${stage.color}`}
-                key={stage.value}
-              >
-                <div className="column-heading">
-                  <h2>
-                    <span />
-                    {stage.short}
-                    <i>{column.length}</i>
-                  </h2>
-                  <span>
-                    {currency(
-                      column.reduce(
-                        (sum, t) =>
-                          sum + (t.expectedValue ?? t.opportunity.value ?? 0),
-                        0,
-                      ),
-                      true,
-                    )}
-                  </span>
-                </div>
-                <div className="kanban-cards">
-                  {column.map((t) => (
-                    <Link
-                      className="kanban-card"
-                      key={t.id}
-                      to={`/app/radar/${t.id}`}
-                    >
-                      <div className="kanban-card-top">
-                        <Badge>{t.opportunity.state || "BR"}</Badge>
-                        <span>{t.opportunity.modality || "Edital"}</span>
-                      </div>
-                      <h3>{t.opportunity.title}</h3>
-                      <p>{t.opportunity.agency}</p>
-                      <strong>
-                        {currency(t.expectedValue ?? t.opportunity.value)}
-                      </strong>
-                      <div className="kanban-deadline">
-                        <CalendarClock size={13} />
-                        <Deadline
-                          value={t.deadline || t.opportunity.closesAt}
-                        />
-                      </div>
-                      <div className="kanban-card-footer">
-                        <span>
-                          <CheckCircle2 size={14} />
-                          {t.tasks.filter((task) => task.done).length}/
-                          {t.tasks.length} tarefas
-                        </span>
-                        <span
-                          className="owner-mini"
-                          title={
-                            members.data?.find((m) => m.id === t.ownerId)
-                              ?.name || "Sem responsável"
-                          }
-                        >
-                          {t.ownerId ? (
-                            members.data?.find((m) => m.id === t.ownerId)
-                              ?.name[0] || "?"
-                          ) : (
-                            <UserRound size={13} />
-                          )}
-                        </span>
-                      </div>
-                    </Link>
-                  ))}
-                  {!column.length && (
-                    <div className="column-empty">
-                      Nenhuma participação nesta etapa
-                    </div>
-                  )}
-                </div>
-              </section>
-            );
-          })}
-        </div>
+        <RadarBoard items={items} stages={stages} members={members.data || []}
+          orderRevision={data?.orderRevision||'0'} refreshing={refreshing} onRefresh={reload}
+          totals={data?.stages||[]} loadingColumns={busy} columnErrors={columnErrors} onMore={more}
+          highlight={params.get("highlight")}
+          onUpdate={()=>{setPage(1);reload();}}
+          onTask={setQuickTask} />
       ) : (
-        <div className="card table-wrap">
+        <><div className="card table-wrap">
           <table>
             <thead>
               <tr>
@@ -268,6 +197,7 @@ export function RadarPage() {
                       <span className="table-subtitle">
                         {t.opportunity.agency}
                       </span>
+                      {!!t.pendingChanges && <Link className="text-link" to={`/app/oportunidades/${t.opportunityId}?tab=mudancas`}><Badge color="amber">{t.pendingChanges} {t.pendingChanges===1?'alteração':'alterações'} para conferir</Badge></Link>}
                     </td>
                     <td>
                       <StageBadge stage={t.stage} />
@@ -294,8 +224,12 @@ export function RadarPage() {
                 ))}
             </tbody>
           </table>
-        </div>
+        </div><div className="radar-pagination" aria-label="Paginação da lista do radar"><Button disabled={loading||refreshing||page===1} onClick={()=>setPage(value=>value-1)}>Página anterior do radar</Button><span>Página {page} · {items.length} exibidas de {data?.total??0} participações</span><Button disabled={loading||refreshing||!data?.hasMore} onClick={()=>setPage(value=>value+1)}>Próxima página do radar</Button></div></>
       )}
+      {quickTask && <TaskModal trackingId={quickTask.id} members={members.data || []}
+        defaultOwnerId={quickTask.ownerId}
+        onClose={() => setQuickTask(null)} onSaved={() => { setQuickTask(null); reload(); }} />}
+      {settingsOpen&&<RadarSettings members={members.data||[]} onClose={()=>setSettingsOpen(false)}/>}
       <p className="page-note">
         As etapas são atualizadas pela sua equipe. “Proposta enviada” registra
         um envio já realizado no portal oficial.
@@ -572,6 +506,7 @@ export function TrackingPage() {
                   <div className="activity-list tracking-history">
                     {item.events.length ? (
                       item.events.map((event) => (
+                        event.type === 'SOURCE_UPDATED' ? <ActivityItem key={event.id} item={{title:event.title || 'Edital atualizado',description:event.description,createdAt:event.createdAt}}/> :
                         <div className="activity-item" key={event.id}>
                           <span className="activity-node" />
                           <div>
@@ -615,6 +550,7 @@ export function TrackingPage() {
                     </p>
                     <p>4. Faça o envio e a conferência no portal oficial.</p>
                   </div>
+                  <DocumentChecklist opportunityId={item.opportunityId}/>
                   <div className="button-row">
                     <Link className="button primary" to="/app/documentos">
                       <FileStack size={16} /> Abrir biblioteca
@@ -755,19 +691,21 @@ export function TrackingPage() {
 function TaskModal({
   trackingId,
   task,
+  defaultOwnerId,
   members,
   onClose,
   onSaved,
 }: {
   trackingId: string;
   task?: Task;
+  defaultOwnerId?: string | null;
   members: Member[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [title, setTitle] = useState(task?.title || ""),
     [deadline, setDeadline] = useState(dateInput(task?.deadline)),
-    [owner, setOwner] = useState(task?.ownerId || ""),
+    [owner, setOwner] = useState(task?.ownerId || defaultOwnerId || ""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [deleting, setDeleting] = useState(false);

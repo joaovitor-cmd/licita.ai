@@ -1,8 +1,13 @@
-import { useEffect, useState, type FormEvent } from "react";
-import {EdictGuide,ProcurementJourney} from './EdictGuide';
-import {PreparationPanel} from './Preparation';
+import { lazy, Suspense, useEffect, useId, useState, type FormEvent } from "react";
+const CommercialProposals = lazy(() => import('./CommercialProposals'));
+import {EdictGuide} from './EdictGuide';
 import {ProcurementItems} from './ProcurementItems';
 import {SourceChanges} from './SourceChanges';
+import {SavedSearches} from './SavedSearches';
+import {ActivityItem} from '../ActivityItem';
+import {HighlightedText} from '../HighlightedText';
+import {textPreview,proposalDateNotice} from '../opportunity-reading';
+import {searchFilterSummary,removeSearchFilter,clearSearchFilters} from '../search-filter-summary';
 import {
   ArrowDown,
   ArrowRight,
@@ -54,57 +59,64 @@ import {
 export function OpportunityCard({
   item,
   dense = false,
+  highlightTerms = [],
 }: {
   item: Opportunity;
   dense?: boolean;
+  highlightTerms?: string[];
 }) {
-  return (
-    <Link
-      className={`opportunity-card ${dense ? "dense" : ""}`}
-      data-tour="opportunity"
-      to={`/app/oportunidades/${item.id}`}
-    >
-      <div className="opportunity-card-top">
-        <div className="badge-row">
-          <Badge color="blue">
-            {item.modality || "Modalidade não informada"}
-          </Badge>
-          {item.trackingId && (
-            <Badge color="purple">
-              <Radio size={11} /> No radar
-            </Badge>
-          )}
-          {item.isDemo && <Badge>Demonstração</Badge>}
-        </div>
-        <Score value={item.match.score} excluded={item.match.excluded} />
-      </div>
-      <h3>{item.title}</h3>
-      <p className="agency">
-        <BriefcaseBusiness size={14} />
-        {item.agency}
-      </p>
-      <div className="opportunity-meta">
-        <span>
-          <MapPin size={14} />
-          {[item.city, item.state].filter(Boolean).join(" · ") ||
-            "Local não informado"}
-        </span>
-        <span>
-          <CalendarClock size={14} />
-          <Deadline value={item.closesAt} />
-        </span>
-      </div>
-      <div className="opportunity-card-bottom">
-        <div>
-          <span className="overline">VALOR ESTIMADO</span>
-          <strong>{currency(item.value)}</strong>
-        </div>
-        <span className="card-arrow">
-          <ArrowUpRight size={19} />
-        </span>
-      </div>
-    </Link>
+  const navigate = useNavigate();
+  const toast = useToast();
+  const [adding, setAdding] = useState(false);
+  const [trackingId, setTrackingId] = useState(item.trackingId);
+  const [objectExpanded,setObjectExpanded]=useState(false);
+  const objectId=useId(),preview=textPreview(item.title.trim()||'Objeto não informado'),statusPreview=textPreview(item.status?.trim()||'Situação não informada pelo portal',120);
+  const dateNotice=proposalDateNotice(item.opensAt,item.closesAt);
+  useEffect(()=>setObjectExpanded(false),[item.id,item.title]);
+  useEffect(() => setTrackingId(item.trackingId), [item.id, item.trackingId]);
+  async function addToRadar() {
+    if (adding) return;
+    setAdding(true);
+    try {
+      const result = await send<Tracking>('/trackings', 'POST', { opportunityId: item.id });
+      setTrackingId(result.id);
+      window.dispatchEvent(new Event('radar-added'));
+      toast('Oportunidade adicionada ao radar.');
+      navigate(`/app/radar?highlight=${encodeURIComponent(result.id)}`);
+    } catch (e) { toast((e as Error).message, true); }
+    finally { setAdding(false); }
+  }
+  if (dense) return (
+    <article className="opportunity-card discovery-card dense">
+      <div className="opportunity-card-top"><div className="badge-row"><Badge color="blue">{item.modality || "Modalidade não informada"}</Badge>{trackingId&&<Badge color="purple"><Radio size={11}/> No radar</Badge>}</div><Score value={item.match.score} excluded={item.match.excluded}/></div>
+      <Link data-tour="opportunity" className="opportunity-title-link" to={`/app/oportunidades/${item.id}`}><h3 title={item.title}>{item.title}</h3></Link>
+      <p className="agency"><BriefcaseBusiness size={14}/>{item.agency}</p>
+      <div className="opportunity-meta"><span><MapPin size={14}/>{[item.city,item.state].filter(Boolean).join(" · ")||"Local não informado"}</span><span><CalendarClock size={14}/><strong>Propostas até</strong> {date(item.closesAt,true)}</span></div>
+      <div className="opportunity-card-bottom"><div><span className="overline">VALOR ESTIMADO</span><strong>{currency(item.value)}</strong></div><Link className="card-arrow" to={`/app/oportunidades/${item.id}`} aria-label={`Abrir ${item.title}`}><ArrowUpRight size={19}/></Link></div>
+    </article>
   );
+  return <article className="opportunity-card discovery-card discovery-list-card">
+    <div className="discovery-location"><BriefcaseBusiness size={15}/><strong><HighlightedText text={item.agency||"Órgão não informado"} terms={highlightTerms}/></strong><span>{[item.city,item.state].filter(Boolean).join(" · ")||"Localidade não informada"}</span></div>
+    <div className="discovery-tags"><Badge color={item.sourceCode==='pncp'?'green':'teal'}>{item.sourceName||item.sourceCode||'Portal não informado'}</Badge><Badge color="blue">{item.modality||'Modalidade não informada'}</Badge><Badge color={item.capag?'purple':'slate'}>{item.capag?`CAPAG ${item.capag}`:'CAPAG não disponível'}</Badge>{trackingId&&<Badge color="purple"><Radio size={11}/> No radar</Badge>}<Score value={item.match.score} excluded={item.match.excluded}/></div>
+    <div className="discovery-object-label">OBJETO DA CONTRATAÇÃO</div>
+    <Link id={objectId} data-tour="opportunity" className="opportunity-title-link discovery-object" to={`/app/oportunidades/${item.id}`}><h3><HighlightedText text={objectExpanded?item.title:preview.text} terms={highlightTerms}/></h3></Link>
+    {preview.truncated&&<button type="button" className="discovery-object-toggle" aria-expanded={objectExpanded} aria-controls={objectId} onClick={()=>setObjectExpanded(value=>!value)}>{objectExpanded?'Recolher objeto':'Ler objeto completo'}</button>}
+    <div className="discovery-facts">
+      <div><span>Edital</span><strong>{item.editalNumber||'Não informado'}</strong></div>
+      <div><span>UASG</span><strong>{item.uasg||'Não informada'}</strong></div>
+      <div><span>Publicação</span><strong>{date(item.publishedAt)}</strong></div>
+      <div><span>Abertura das propostas</span><strong>{date(item.opensAt,true)}</strong></div>
+      <div><span>Encerramento das propostas</span><strong>{date(item.closesAt,true)}</strong></div>
+      <div><span>Valor estimado do edital</span><strong>{currency(item.value)}</strong></div>
+    </div>
+    <div className="discovery-source-status"><span>Situação na última coleta</span><strong>{statusPreview.text}</strong>{dateNotice&&<small>{dateNotice}</small>}</div>
+    <details className="discovery-source-context"><summary>Sobre os dados deste edital</summary>{statusPreview.truncated&&<p>Situação informada pelo portal: {item.status}</p>}<p>Datas e situação refletem a última coleta, não uma confirmação em tempo real. Confira mudanças e possibilidade de participação no portal oficial.</p><p>Abertura é o início informado para propostas, não necessariamente o horário da sessão de disputa. O valor exibido é a estimativa do órgão, não sua cotação nem o resultado da licitação. Horários de Brasília.</p></details>
+    <div className="discovery-list-footer"><span className="licitaro-code"><small>CÓDIGO LICITARO</small>{item.publicCode?<button type="button" className="licitaro-copy" aria-label={`Copiar código Licitaro ${item.publicCode}`} onClick={async()=>{try{await navigator.clipboard.writeText(item.publicCode!);toast('Código Licitaro copiado.');}catch{toast('Não foi possível copiar. Selecione o código e copie manualmente.',true);}}}>{item.publicCode}</button>:<strong>Não disponível</strong>}<small>Consultado em {date(item.syncedAt,true)}</small></span>
+      <div className="discovery-actions">{trackingId?<Link className="button primary radar-action" to={`/app/radar?highlight=${encodeURIComponent(trackingId)}`}><Radio size={15}/> Ver no quadro</Link>:<Button className="radar-action" onClick={addToRadar} busy={adding}><Radio size={15}/> Adicionar ao radar</Button>}<Link className="button secondary detail-action" to={`/app/oportunidades/${item.id}`}><FileText size={14}/> Ver edital</Link>{!item.isDemo&&safeUrl(item.url)&&<a className="button ghost source-action" href={safeUrl(item.url)} target="_blank" rel="noopener noreferrer"><ExternalLink size={14}/> Portal oficial</a>}</div>
+    </div>
+    {!!item.matchedSearchProfiles?.length&&<details className="discovery-relevance"><summary>Encontrado por {item.matchedSearchProfiles.length} {item.matchedSearchProfiles.length===1?'perfil':'perfis'} de busca</summary><ul>{item.matchedSearchProfiles.map(profile=><li key={profile.id}>{profile.name}</li>)}</ul><p>Correspondência aos filtros salvos. A aderência continua baseada no perfil comercial da empresa.</p></details>}
+    <details className="discovery-relevance"><summary>Por que apareceu para mim?</summary><ul>{item.match.reasons.length?item.match.reasons.map((reason,index)=><li key={index}>{reason}</li>):<li>Resultado dos filtros atuais. Confira os requisitos antes de decidir participar.</li>}</ul><p>Aderência ao perfil não comprova conformidade técnica.</p></details>
+  </article>;
 }
 export function DashboardPage() {
   const { data, loading, error, reload } =
@@ -340,14 +352,7 @@ export function DashboardPage() {
             {data.activity.length ? (
               <div className="activity-list">
                 {data.activity.slice(0, 5).map((item) => (
-                  <div className="activity-item" key={item.id}>
-                    <span className="activity-node" />
-                    <div>
-                      <h3>{item.title}</h3>
-                      <p>{item.description}</p>
-                      <time>{date(item.createdAt, true)}</time>
-                    </div>
-                  </div>
+                  <ActivityItem key={item.id} item={item}/>
                 ))}
               </div>
             ) : (
@@ -382,6 +387,7 @@ function CompassIcon({ size }: { size?: number }) {
   return <BriefcaseBusiness size={size} />;
 }
 type OpportunityResult = {
+  searchProfiles?: {id:string;name:string;revision:number}[];
   items: Opportunity[];
   total: number;
   page: number;
@@ -395,16 +401,25 @@ export function OpportunitiesPage() {
   const { data, loading, error, reload } = useResource<OpportunityResult>(
     `/opportunities?${params.toString()}`,
   );
-  useEffect(() => setQuery(params.get("q") || ""), [params]);
+  const appliedQuery=params.get('q')||'';
+  useEffect(() => setQuery(appliedQuery), [appliedQuery]);
+  useEffect(()=>{
+    // A rapid Back/Forward can skip the intermediate router render. Restore
+    // directly on a history traversal; normal filter pushes preserve the draft.
+    const restore=()=>setQuery(new URLSearchParams(window.location.search).get('q')||'');
+    window.addEventListener('popstate',restore);
+    return()=>window.removeEventListener('popstate',restore);
+  },[]);
   const update = (key: string, value: string) => {
     const next = new URLSearchParams(params);
     value ? next.set(key, value) : next.delete(key);
     if (key !== "page") next.delete("page");
+    if (key === "state") next.delete("states");
+    if (key === "modality") next.delete("modalities");
+    if (key === "source") next.delete("sources");
     setParams(next);
   };
-  const count = [...params.keys()].filter(
-    (k) => !["q", "sort", "page", "pageSize"].includes(k),
-  ).length;
+  const activeFilters=searchFilterSummary(params,data?.searchProfiles),count=activeFilters.length;
   function search(e: FormEvent) {
     e.preventDefault();
     update("q", query);
@@ -415,18 +430,14 @@ export function OpportunitiesPage() {
         eyebrow="DESCOBERTA INTELIGENTE"
         title="Oportunidades"
         description="Encontre os editais que fazem sentido para o seu negócio."
-        actions={
-          <Link className="button secondary" to="/app/perfil">
-            <SlidersHorizontal size={16} /> Ajustar perfil
-          </Link>
-        }
+        actions={<div className="header-actions discovery-header-actions"><Link className="button secondary" to="/app/monitoramentos">Monitorar órgãos</Link><SavedSearches params={params} onApply={setParams}/><Link className="button secondary" to="/app/perfil"><SlidersHorizontal size={16}/> Ajustar perfil</Link></div>}
       />
       <div className="search-panel card">
         <form className="opportunity-search" onSubmit={search}>
           <Search size={21} />
           <input
             aria-label="Buscar oportunidades"
-            placeholder="Busque por objeto, palavra-chave ou órgão público"
+            placeholder="Busque por objeto, órgão ou código Licitaro (ex.: LC-00012345)"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -445,63 +456,32 @@ export function OpportunitiesPage() {
           )}
           <Button type="submit">Buscar</Button>
         </form>
-        <div className="filter-bar">
-          <select
-            aria-label="Filtrar por estado"
-            value={params.get("state") || ""}
-            onChange={(e) => update("state", e.target.value)}
-          >
-            <option value="">Todos os estados</option>
-            {STATES.map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Filtrar por modalidade"
-            value={params.get("modality") || ""}
-            onChange={(e) => update("modality", e.target.value)}
-          >
-            <option value="">Todas as modalidades</option>
-            {[
-              "Pregão eletrônico",
-              "Concorrência",
-              "Dispensa",
-              "Credenciamento",
-              "Concurso",
-              "Leilão",
-            ].map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Filtrar por compatibilidade"
-            value={params.get("minScore") || ""}
-            onChange={(e) => update("minScore", e.target.value)}
-          >
-            <option value="">Qualquer compatibilidade</option>
-            <option value="60">A partir de 60%</option>
-            <option value="80">A partir de 80%</option>
-            {params.has('minScore') && !['60','80',''].includes(params.get('minScore')!) && <option value={params.get('minScore')!}>A partir de {params.get('minScore')}%</option>}
-          </select>
+        <div className="filter-bar compact-filter-bar">
           <button
             className={`filter-toggle ${advanced ? "selected" : ""}`}
             onClick={() => setAdvanced((v) => !v)}
             aria-expanded={advanced}
           >
-            <SlidersHorizontal size={15} /> Mais filtros
+            <SlidersHorizontal size={15} /> Filtros adicionais
             {count > 0 && <span>{count}</span>}
           </button>
           {count > 0 && (
             <button
               className="clear-filters"
-              onClick={() => setParams(query ? { q: query } : {})}
+              onClick={() => setParams(clearSearchFilters(params))}
             >
               Limpar filtros
             </button>
           )}
         </div>
+        {!!count&&<section className="active-search-filters" aria-label="Filtros aplicados"><ul>{activeFilters.map(filter=><li key={filter.id}><span>{filter.label}: {filter.preview}</span><button type="button" aria-label={`Remover filtro: ${filter.label}`} onClick={()=>setParams(removeSearchFilter(params,filter))}><X size={13}/></button></li>)}</ul><details><summary>Ver filtros completos</summary><dl>{activeFilters.map(filter=><div key={filter.id}><dt>{filter.label}</dt><dd>{filter.value}</dd></div>)}</dl><p>Remover ou ajustar filtros nesta busca não altera o perfil salvo. Aderência é ao perfil comercial da empresa, não garantia de habilitação.</p></details></section>}
         {advanced && (
           <div className="advanced-filters">
+            <Field label="Termos de interesse" hint="Qualquer termo, separado por vírgula."><input maxLength={2000} value={params.get('terms')||''} onChange={e=>update('terms',e.target.value)}/></Field>
+            <Field label="Excluir termos" hint="Separe por vírgula."><input maxLength={2000} value={params.get('exclude')||''} onChange={e=>update('exclude',e.target.value)}/></Field>
+            <Field label="Estado"><select aria-label="Filtrar por estado" value={params.get('states')?'__multi':params.get('state')||''} onChange={e=>update('state',e.target.value)}><option value="">Todos os estados</option>{params.get('states')&&<option value="__multi" disabled>Estados: {params.get('states')}</option>}{STATES.map(s=><option key={s}>{s}</option>)}</select></Field>
+            <Field label="Modalidade"><select aria-label="Filtrar por modalidade" value={params.get('modalities')?'__multi':params.get('modality')||''} onChange={e=>update('modality',e.target.value)}><option value="">Todas as modalidades</option>{params.get('modalities')&&<option value="__multi" disabled>{params.get('modalities')}</option>}{['Pregão eletrônico','Concorrência','Dispensa','Credenciamento','Concurso','Leilão'].map(s=><option key={s}>{s}</option>)}</select></Field>
+            <Field label="Aderência mínima"><select aria-label="Filtrar por compatibilidade" value={params.get('minScore')||''} onChange={e=>update('minScore',e.target.value)}><option value="">Qualquer compatibilidade</option><option value="60">A partir de 60%</option><option value="80">A partir de 80%</option>{params.has('minScore')&&!['60','80',''].includes(params.get('minScore')!)&&<option value={params.get('minScore')!}>A partir de {params.get('minScore')}%</option>}</select></Field>
             <Field label="Município">
               <input
                 value={params.get("city") || ""}
@@ -518,10 +498,11 @@ export function OpportunitiesPage() {
             </Field>
             <Field label="Fonte">
               <select
-                value={params.get("source") || ""}
+                value={params.get('sources')?'__multi':params.get("source") || ""}
                 onChange={(e) => update("source", e.target.value)}
               >
                 <option value="">Todas as fontes</option>
+                {params.get('sources')&&<option value="__multi" disabled>Portais: {params.get('sources')}</option>}
                 <option value="pncp">PNCP</option>
                 <option value="comprasgov">Compras.gov.br</option>
               </select>
@@ -602,9 +583,9 @@ export function OpportunitiesPage() {
         <Loading label="Buscando oportunidades…" />
       ) : data?.items.length ? (
         <>
-          <div className="opportunity-grid">
+          <div className="opportunity-grid opportunity-list">
             {data.items.map((item) => (
-              <OpportunityCard item={item} key={item.id} />
+              <OpportunityCard item={item} key={item.id} highlightTerms={[...(params.get('terms')||'').split(','),...(params.get('q')||'').split(/\s+/)]}/>
             ))}
           </div>
           <div className="pagination">
@@ -665,10 +646,12 @@ export function OpportunityPage() {
     reload,
   } = useResource<Opportunity>(`/opportunities/${id}`);
   const [busy, setBusy] = useState(false),
-    [tab, setTab] = useState(detailParams.get('tab')==='mudancas'?'mudancas':'analise'),
+    [proposalDirty,setProposalDirty] = useState(false),
+    [proposalBusy,setProposalBusy] = useState(false),
+    [tab, setTab] = useState(['mudancas','propostas','itens'].includes(detailParams.get('tab')||'')?detailParams.get('tab')!:'analise'),
     [refreshing, setRefreshing] = useState(false);
   const toast = useToast();
-  useEffect(()=>{if(detailParams.get('tab')==='mudancas')setTab('mudancas');},[detailParams,id]);
+  useEffect(()=>{if(['mudancas','propostas','itens'].includes(detailParams.get('tab')||''))setTab(detailParams.get('tab')!);},[detailParams,id]);
   useEffect(()=>{if(item&&!loading&&!error)window.dispatchEvent(new Event('opportunity-viewed'));},[item?.id,loading,error]);
   async function refreshOfficial() {
     if (!item) return;
@@ -691,7 +674,8 @@ export function OpportunityPage() {
         opportunityId: item.id,
       });
       toast("Oportunidade adicionada ao seu radar.");
-      navigate(`/app/radar/${tracking.id}`);
+      window.dispatchEvent(new Event('radar-added'));
+      navigate(`/app/radar?highlight=${encodeURIComponent(tracking.id)}`);
     } catch (e) {
       toast((e as Error).message, true);
     } finally {
@@ -718,8 +702,6 @@ export function OpportunityPage() {
           {item.agency}
         </p>
       </div>
-      <PreparationPanel opportunityId={item.id}/>
-      <ProcurementJourney item={item}/>
       <div className="detail-layout">
         <div>
           <div className="detail-summary-grid">
@@ -751,6 +733,7 @@ export function OpportunityPage() {
                 { id: "analise", label: "Entender e conferir" },
                 { id: "resumo", label: "Visão do edital" },
                 { id: "itens", label: "Itens e valores" },
+                { id: "propostas", label: "Cotações" },
                 { id: "mudancas", label: "Mudanças e relações" },
                 {
                   id: "documentos",
@@ -761,16 +744,17 @@ export function OpportunityPage() {
                 <button
                   role="tab"
                   aria-selected={tab === t.id}
+                  disabled={proposalBusy&&tab!==t.id}
                   key={t.id}
                   className={tab === t.id ? "active" : ""}
-                  onClick={() => setTab(t.id)}
+                  onClick={() => {if(t.id===tab||!proposalDirty||window.confirm('Descartar as alterações ainda não salvas nesta cotação?'))setTab(t.id);}}
                 >
                   {t.label}
                 </button>
               ))}
             </div>
             <div className="tab-content" role="tabpanel">
-              {tab === "mudancas" ? <SourceChanges key={item.id} id={item.id}/> : tab === "itens" ? <ProcurementItems key={item.id} id={item.id}/> : tab === "analise" ? <EdictGuide item={item}/> : tab === "resumo" ? (
+              {tab === "propostas" ? <Suspense fallback={<Loading/>}><CommercialProposals key={item.id} id={item.id} onDirtyChange={setProposalDirty} onBusyChange={setProposalBusy}/></Suspense> : tab === "mudancas" ? <SourceChanges key={item.id} id={item.id}/> : tab === "itens" ? <ProcurementItems key={item.id} id={item.id}/> : tab === "analise" ? <EdictGuide item={item}/> : tab === "resumo" ? (
                 <>
                   <h2>Objeto da contratação</h2>
                   <p className="long-copy">{item.description || item.title}</p>
@@ -806,7 +790,7 @@ export function OpportunityPage() {
                     </div>
                     <div>
                       <dt>Identificador de origem</dt>
-                      <dd className="mono">{item.canonicalKey}</dd>
+                      <dd className="mono">{item.publicCode||'Não disponível'}</dd>
                     </div>
                   </dl>
                 </>

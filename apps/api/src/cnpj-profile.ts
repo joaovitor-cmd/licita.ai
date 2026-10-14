@@ -30,11 +30,17 @@ export function suggestCompany(raw:unknown,requestedCnpj:string) {
     const evidence=activities.filter(a=>rule.pattern.test(normalize(a.description)));
     return evidence.length?[{id:rule.id,segment:rule.name,keywords:rule.keywords,evidence}]:[];
   });
-  return {cnpj:requestedCnpj,companyName:company.razao_social,activities,suggestions,source:'BrasilAPI / Minha Receita',consultedAt:new Date().toISOString()};
+  const registrationRaw=raw as Record<string,unknown>;
+  const field=(key:string,max=200)=>typeof registrationRaw[key]==='string'?String(registrationRaw[key]).trim().slice(0,max):'';
+  const registration={legalName:company.razao_social,tradeName:field('nome_fantasia',300),legalNature:field('natureza_juridica'),companySize:field('porte',100),phone:field('ddd_telefone_1',40),email:field('email',254),street:field('logradouro',300),number:field('numero',40),complement:field('complemento'),district:field('bairro'),city:field('municipio'),state:field('uf',2),zipCode:field('cep',9)};
+  return {cnpj:requestedCnpj,companyName:company.razao_social,registration,activities,suggestions,source:'BrasilAPI / Minha Receita',consultedAt:new Date().toISOString()};
 }
 export async function lookupCompany(cnpj:string,fetcher:typeof fetch=fetch) {
   const response=await fetcher(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`,{signal:AbortSignal.timeout(8000),redirect:'error',headers:{Accept:'application/json'}});
   if(response.status===404)throw new Error('CNPJ não encontrado na fonte de consulta. Confira o número ou preencha o perfil manualmente.');
   if(!response.ok)throw new Error('A consulta de CNPJ está indisponível. Tente novamente mais tarde ou configure o perfil manualmente.');
-  return suggestCompany(await response.json(),cnpj);
+  if(!response.body)throw new Error('A fonte retornou uma resposta vazia.');
+  const reader=response.body.getReader(),chunks:Uint8Array[]=[];let bytes=0;
+  try{while(true){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>512_000)throw new Error('A resposta de CNPJ excede o limite permitido.');chunks.push(value);}}finally{await reader.cancel().catch(()=>{});}
+  return suggestCompany(JSON.parse(Buffer.concat(chunks).toString('utf8')),cnpj);
 }

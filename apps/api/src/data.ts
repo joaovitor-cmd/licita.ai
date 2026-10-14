@@ -3,17 +3,15 @@ import { type Database, one, pool, rows, transaction } from "./db.js";
 import { current, HttpError, type Auth } from "./security.js";
 import {
   defaultProfile,
-  matchesModality,
-  matchesSearch,
   normalize,
   type Profile,
   scoreOpportunity,
-  smartNormalize,
 } from "./scoring.js";
 import { searchSchema } from "./validation.js";
-import { openOpportunitySql } from './availability.js';
 import {enqueueEmail} from './email-queue.js';
 import {scoreSql} from './search-query.js';
+import {opportunityIdentifiers,identifierMetadataSql} from './opportunity-identifiers.js';
+import {opportunityFilterSql} from './search-filter-sql.js';
 
 export const iso = (date: any): string | null =>
   date ? new Date(date).toISOString() : null;
@@ -22,7 +20,7 @@ export async function getProfile(
   db: Database = pool,
 ): Promise<Profile> {
   const org = await one(
-    "SELECT name,tax_id,profile FROM organizations WHERE id=$1",
+    "SELECT name,tax_id,profile,company_revision FROM organizations WHERE id=$1",
     [auth.organization.id],
     db,
   );
@@ -31,6 +29,7 @@ export async function getProfile(
     ...org.profile,
     organizationName: org.name,
     taxId: org.tax_id,
+    companyRevision:org.company_revision,
   };
 }
 export function mapCatalog(row: any) {
@@ -43,6 +42,10 @@ export function mapCatalog(row: any) {
     keywords: row.keywords,
     active: row.active,
     updatedAt: iso(row.updated_at),
+    unit: row.unit ?? null,
+    unitCost: row.unit_cost == null ? null : Number(row.unit_cost),
+    salePrice: row.sale_price == null ? null : Number(row.sale_price),
+    priceBasis: row.price_basis ?? null,
   };
 }
 export async function catalog(auth: Auth, db: Database = pool) {
@@ -62,6 +65,7 @@ export const visibility = (auth: Auth, offset = 1) =>
 export function mapOpportunity(row: any, profile: Profile, offerings: any[]) {
   const item = {
     id: row.id,
+    ...opportunityIdentifiers(row),
     canonicalKey: row.canonical_key,
     title: row.title,
     description: row.description,
@@ -122,51 +126,39 @@ export async function searchOpportunities(auth: Auth, query: unknown) {
     values.push(value);
     return `$${values.length}`;
   };
-  if (q.state) where.push(`o.state=${bind(q.state.toUpperCase())}`);
-  if (q.minValue !== undefined) where.push(`o.value>=${bind(q.minValue)}`);
-  if (q.maxValue !== undefined) where.push(`o.value<=${bind(q.maxValue)}`);
-  if (q.from) where.push(`o.published_at>=${bind(q.from)}`);
-  if (q.to) where.push(`o.published_at<${bind(q.to)}::date+interval '1 day'`);
-  if (q.source) {
-    const p = bind(q.source);
-    where.push(
-      `(o.source_code=${p} OR EXISTS(SELECT 1 FROM opportunity_sources s WHERE s.opportunity_id=o.id AND s.source_code=${p}))`,
-    );
-  }
-  if (q.status === "open" || q.status === "recebendo_proposta")
-    where.push(
-      `(${openOpportunitySql})`,
-    );
-  else if (q.status === "closed") where.push("o.closes_at<now()");
-  else if (q.status)
-    where.push(
-      `o.status ILIKE ${bind("%" + q.status.replace(/[\\%_]/g, "\\$&") + "%")}`,
-    );
+  where.push(...opportunityFilterSql(q,bind));
   const [profile,offerings]=await Promise.all([getProfile(auth),catalog(auth)]);
-  const tokens=smartNormalize(q.q).split(' ').filter(Boolean);
-  if(tokens.length)where.push(`o.search_tokens @> ${bind(tokens)}::text[]`);
-  if(q.city)where.push(`position(${bind(normalize(q.city))} in o.city_search)>0`);
-  if(q.agency)where.push(`position(${bind(normalize(q.agency))} in o.agency_search)>0`);
-  if(q.modality){const p=bind(normalize(q.modality));where.push(`(o.modality_search=${p} OR left(o.modality_search,length(${p})+1)=${p}||' ')`);}
-  const needsScore=q.sort==='score'||q.minScore!==undefined;
+  const ids=[...new Set(q.searchProfiles.split(',').map(id=>id.trim().toLowerCase()).filter(Boolean))];
+  const foundProfiles=ids.length?await rows('SELECT id,name,revision,filters FROM search_profiles WHERE organization_id=$1 AND active AND id=ANY($2::uuid[])',[auth.organization.id,ids]):[];
+  if(foundProfiles.length!==ids.length)throw new HttpError(400,'Um dos perfis selecionados não está disponível nesta empresa. Atualize a seleção; perfis pausados não participam da busca.');
+  const selectedProfiles=ids.map(id=>foundProfiles.find(profile=>profile.id===id)!);
+  const profileRules=selectedProfiles.map(saved=>({saved,filters:searchSchema.parse(saved.filters)}));
+  const predicates=profileRules.map(rule=>opportunityFilterSql(rule.filters,bind).join(' AND ')||'TRUE');
+  if(predicates.length)where.push(`(${predicates.map(predicate=>`(${predicate})`).join(' OR ')})`);
+  const needsScore=q.sort==='score'||q.minScore!==undefined||profileRules.some(rule=>rule.filters.minScore!==undefined);
   const rank=needsScore?scoreSql(profile,offerings,bind):'0';
   const threshold=q.minScore===undefined?'TRUE':`rank_score>=${bind(q.minScore)}`;
+  const profileScoreChecks=profileRules.map(rule=>rule.filters.minScore===undefined?'TRUE':`rank_score>=${bind(rule.filters.minScore)}`);
+  const unionThreshold=predicates.length?` AND (${predicates.map((_,index)=>`(match_profile_${index} AND ${profileScoreChecks[index]})`).join(' OR ')})`:'';
+  const matchColumns=predicates.map((predicate,index)=>`,(${predicate}) match_profile_${index}`).join('');
+  const matchMetadata=profileRules.length?`coalesce((SELECT jsonb_agg(profile ORDER BY ordinal) FROM (VALUES ${profileRules.map((rule,index)=>`(${index},CASE WHEN p.match_profile_${index} AND ${profileScoreChecks[index]==='TRUE'?'TRUE':'p.'+profileScoreChecks[index]} THEN jsonb_build_object('id',${bind(rule.saved.id)}::text,'name',${bind(rule.saved.name)}::text,'revision',${bind(rule.saved.revision)}::int) END)`).join(',')}) matched(ordinal,profile) WHERE profile IS NOT NULL),'[]'::jsonb)`:`'[]'::jsonb`;
   const orders={score:'rank_score DESC,published_at DESC NULLS LAST,id',newest:'published_at DESC NULLS LAST,id',deadline:'closes_at ASC NULLS LAST,id',value:'value DESC NULLS LAST,id'};
   const limit=bind(q.pageSize),offset=bind((q.page-1)*q.pageSize);
   // Count and page share one database snapshot. Only the requested rows cross the connection.
   const result=await one(`WITH candidates AS MATERIALIZED (
-    SELECT o.id,o.published_at,o.closes_at,o.value,${rank} rank_score FROM opportunities o WHERE ${where.join(' AND ')}
-  ), filtered AS MATERIALIZED (SELECT * FROM candidates WHERE ${threshold}),
+    SELECT o.id,o.published_at,o.closes_at,o.value,${rank} rank_score${matchColumns} FROM opportunities o WHERE ${where.join(' AND ')}
+  ), filtered AS MATERIALIZED (SELECT * FROM candidates WHERE ${threshold}${unionThreshold}),
   page AS (SELECT * FROM filtered ORDER BY ${orders[q.sort]} LIMIT ${limit} OFFSET ${offset})
   SELECT (SELECT count(*)::int FROM filtered) total,coalesce((SELECT jsonb_agg(record ORDER BY position) FROM (
-    SELECT o.id,o.canonical_key,o.title,o.description,o.agency,o.state,o.city,o.modality,o.sphere,o.value,o.published_at,o.opens_at,o.closes_at,o.status,o.url,o.source_code,o.source_name,o.synced_at,o.demo_org_id,o.documents,o.attachment_error,t.id tracking_id,
+    SELECT o.id,o.public_code,o.canonical_key,o.title,o.description,o.agency,o.state,o.city,o.modality,o.sphere,o.value,o.published_at,o.opens_at,o.closes_at,o.status,o.url,o.source_code,o.source_name,o.synced_at,o.demo_org_id,o.documents,o.attachment_error,${identifierMetadataSql} identifier_metadata,t.id tracking_id,${matchMetadata} matched_search_profiles,
     row_number() OVER(ORDER BY ${orders[q.sort].split(',').map(part=>'p.'+part).join(',')}) position
     FROM page p JOIN opportunities o ON o.id=p.id LEFT JOIN trackings t ON t.opportunity_id=o.id AND t.organization_id=$1
   ) record),'[]'::jsonb) items`,values);
   const total=Number(result.total),page=q.page;
-  const items=result.items.map((row:any)=>mapOpportunity(row,profile,offerings));
+  const items=result.items.map((row:any)=>({...mapOpportunity(row,profile,offerings),matchedSearchProfiles:row.matched_search_profiles??[]}));
   return {
     items,
+    searchProfiles:selectedProfiles.map(saved=>({id:saved.id,name:saved.name,revision:saved.revision})),
     total,
     page,
     pageSize: q.pageSize,
@@ -218,7 +210,7 @@ export async function ensureOwner(
 }
 export async function getTracking(auth: Auth, id: string, db: Database = pool) {
   const row = await ensureTracking(auth, id, db);
-  const [opportunity, tasks, events] = await Promise.all([
+  const [opportunity, tasks, events, changes] = await Promise.all([
     getOpportunity(auth, row.opportunity_id, db),
     rows(
       "SELECT * FROM tasks WHERE tracking_id=$1 ORDER BY created_at,id",
@@ -230,11 +222,19 @@ export async function getTracking(auth: Auth, id: string, db: Database = pool) {
       [id],
       db,
     ),
+    one(`SELECT count(*)::int pending FROM opportunity_changes c WHERE c.opportunity_id=$1 AND NOT EXISTS
+      (SELECT 1 FROM opportunity_change_reviews r WHERE r.organization_id=$2 AND r.change_id=c.id)`,[row.opportunity_id,auth.organization.id],db),
   ]);
+  row.pending_changes=changes?.pending??0;
+  return mapTracking(row,opportunity,tasks,events);
+}
+function mapTracking(row:any,opportunity:any,tasks:any[],events:any[]){
   return {
     id: row.id,
     opportunityId: row.opportunity_id,
     opportunity,
+    pendingChanges: row.pending_changes ?? 0,
+    boardPosition: String(row.board_position),
     stage: row.stage,
     ownerId: row.owner_id,
     deadline: iso(row.deadline),
@@ -249,12 +249,51 @@ export async function getTracking(auth: Auth, id: string, db: Database = pool) {
     events: events.map(mapEvent),
   };
 }
-export async function listTrackings(auth: Auth) {
-  const found = await rows(
-    "SELECT id FROM trackings WHERE organization_id=$1 ORDER BY updated_at DESC",
-    [auth.organization.id],
-  );
-  return Promise.all(found.map((row) => getTracking(auth, row.id)));
+export async function listTrackings(auth: Auth, ids?:string[]) {
+  if(ids?.length===0)return [];
+  const values=ids?[auth.organization.id,ids]:[auth.organization.id];
+  const scope=ids?' AND t.id=ANY($2::uuid[])':'';
+  // Fixed query count; histories are loaded on the selected participation only.
+  const [found,tasks,profile,offerings]=await Promise.all([
+    rows(`SELECT t.*, (SELECT count(*)::int FROM opportunity_changes c WHERE c.opportunity_id=t.opportunity_id AND NOT EXISTS
+      (SELECT 1 FROM opportunity_change_reviews r WHERE r.organization_id=t.organization_id AND r.change_id=c.id)) pending_changes,
+      (to_jsonb(o)-'raw'-'match_text'-'search_tokens') ||
+      jsonb_build_object('identifier_metadata',${identifierMetadataSql},'tracking_id',t.id) opportunity_row
+      FROM trackings t JOIN opportunities o ON o.id=t.opportunity_id
+      WHERE t.organization_id=$1 AND ${visibility(auth)}${scope} ORDER BY t.updated_at DESC,t.id`,values),
+    rows(`SELECT task.* FROM tasks task JOIN trackings t ON t.id=task.tracking_id WHERE t.organization_id=$1${scope} ORDER BY task.created_at,task.id`,values),
+    getProfile(auth),catalog(auth),
+  ]);
+  const grouped=new Map<string,any[]>();
+  for(const task of tasks){const group=grouped.get(task.tracking_id)??[];group.push(task);grouped.set(task.tracking_id,group);}
+  return found.map(row=>mapTracking(row,mapOpportunity(row.opportunity_row,profile,offerings),grouped.get(row.id)??[],[]));
+}
+export async function radarPage(auth:Auth, input:{q:string;owner?:string;highlight?:string;includeClosed:boolean;changesOnly:boolean;view:'board'|'list';stage?:string;page:number}) {
+  const organization=await one('SELECT radar_order_revision::text revision FROM organizations WHERE id=$1',[auth.organization.id]);
+  const args:unknown[]=[auth.organization.id],conditions=[`t.organization_id=$1`,visibility(auth)];
+  const bind=(value:unknown)=>{args.push(value);return `$${args.length}`;};
+  if(input.q){const pattern=bind('%'+input.q.replace(/[\\%_]/g,'\\$&')+'%');conditions.push(`(o.title ILIKE ${pattern} OR o.agency ILIKE ${pattern})`);}
+  if(input.owner)conditions.push(`t.owner_id=${bind(input.owner)}::uuid`);
+  if(!input.includeClosed)conditions.push("t.stage NOT IN ('WON','LOST','DISCARDED')");
+  if(input.changesOnly)conditions.push(`EXISTS(SELECT 1 FROM opportunity_changes c WHERE c.opportunity_id=t.opportunity_id AND NOT EXISTS(SELECT 1 FROM opportunity_change_reviews r WHERE r.organization_id=t.organization_id AND r.change_id=c.id))`);
+  const from=`FROM trackings t JOIN opportunities o ON o.id=t.opportunity_id WHERE ${conditions.join(' AND ')}`;
+  const grouped=await rows(`SELECT t.stage,count(*)::int count,sum(coalesce(t.expected_value,o.value)) potential,count(*) FILTER(WHERE t.expected_value IS NULL AND o.value IS NULL)::int unknown_values,sum((SELECT count(*) FROM tasks task WHERE task.tracking_id=t.id AND NOT task.done))::int pending_tasks ${from} GROUP BY t.stage`,args);
+  const pageArgs=[...args],limit=input.view==='board'?25:50;
+  let pageFrom=from;
+  if(input.stage){pageArgs.push(input.stage);pageFrom+=` AND t.stage=$${pageArgs.length}`;}
+  pageArgs.push((input.page-1)*limit,input.page*limit);
+  const selected=await rows(`WITH ranked AS (SELECT t.id,t.stage,row_number() OVER(${input.view==='board'?'PARTITION BY t.stage ':''}ORDER BY ${input.view==='board'?'t.board_position,t.id':'t.updated_at DESC,t.id'}) position ${pageFrom}) SELECT id,stage FROM ranked WHERE position>$${pageArgs.length-1} AND position<=$${pageArgs.length} ORDER BY position,id`,pageArgs);
+  if(input.highlight&&input.view==='board'&&input.page===1&&!input.stage&&!selected.some(row=>row.id===input.highlight)){
+    const focused=await rows(`SELECT t.id ${from} AND t.id=$${args.length+1}::uuid`,[...args,input.highlight]);
+    selected.push(...focused);
+  }
+  const loaded=await listTrackings(auth,selected.map(row=>row.id)),byId=new Map(loaded.map(item=>[item.id,item]));
+  const items=selected.map(row=>byId.get(row.id)).filter(item=>item!==undefined);
+  const stages=grouped.map(row=>({stage:row.stage,count:row.count,potential:row.potential===null?null:Number(row.potential),unknownValues:row.unknown_values,pendingTasks:row.pending_tasks,hasMore:row.count>input.page*limit}));
+  const active=stages.filter(row=>!['WON','LOST','DISCARDED'].includes(row.stage));
+  const total=stages.reduce((sum,row)=>sum+row.count,0),pageTotal=input.stage?stages.find(row=>row.stage===input.stage)?.count??0:total;
+  const hasMore=input.view==='list'?pageTotal>input.page*limit:stages.some(row=>(!input.stage||row.stage===input.stage)&&row.hasMore);
+  return {items,orderRevision:organization.revision,page:input.page,pageSize:limit,view:input.view,stages,total,pageTotal,hasMore,summary:{active:active.reduce((sum,row)=>sum+row.count,0),potential:active.every(row=>row.potential===null)?null:active.reduce((sum,row)=>sum+(row.potential??0),0),unknownValues:active.reduce((sum,row)=>sum+row.unknownValues,0),pendingTasks:active.reduce((sum,row)=>sum+row.pendingTasks,0)}};
 }
 export async function addEvent(
   trackingId: string,

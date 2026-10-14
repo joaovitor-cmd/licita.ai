@@ -4,6 +4,7 @@ import { z } from "zod";
 import { one, rows, transaction } from "./db.js";
 import { current, HttpError } from "./security.js";
 import { getOpportunity, addEvent } from "./data.js";
+import {lockRadarOrder,ensureOrderedTracking} from './radar-order.js';
 import {
   checklistSchema,
   itemKey,
@@ -126,6 +127,7 @@ export function checklistRoutes(router: Router) {
       .strict()
       .parse(req.body);
     const result = await transaction(async (db) => {
+      await lockRadarOrder(org,db);
       await db.query("SELECT id FROM opportunities WHERE id=$1 FOR UPDATE", [
         oid,
       ]);
@@ -195,15 +197,7 @@ export function checklistRoutes(router: Router) {
           "A aplicação ultrapassaria 100 exigências documentais. Selecione menos itens; nada foi alterado.",
         );
       if (taskCount && !tracking) {
-        await db.query(
-          "INSERT INTO trackings(id,organization_id,opportunity_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
-          [randomUUID(), org, oid],
-        );
-        tracking = await one(
-          "SELECT id FROM trackings WHERE organization_id=$1 AND opportunity_id=$2",
-          [org, oid],
-          db,
-        );
+        tracking = await ensureOrderedTracking(org,oid,db);
         await addEvent(
           tracking!.id,
           "CREATED",

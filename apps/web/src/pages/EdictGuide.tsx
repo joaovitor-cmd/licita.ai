@@ -6,6 +6,7 @@ import type { Opportunity } from "../types";
 import {TopicActions,preparationChanged} from './Preparation';
 type Review = { topic: string; state: string; notes: string };
 type Topic = { key: string; title: string; help: string; action: string };
+const progressLabels: Record<string,string> = {PREPARING:'Preparando os anexos…',CHECKING:'Conferindo origem e formato…',DOWNLOADING:'Baixando documento…',READING:'Extraindo texto do documento…',FINALIZING:'Salvando resultado…'};
 type Doc = {
   name: string;
   url: string;
@@ -19,6 +20,7 @@ type Analysis = {
   id: string;
   status: string;
   stale: boolean;
+  progress?: { phase?: string; processed?: number; total?: number; currentDocument?: string };
   error: string | null;
   finished_at: string | null;
   reviews: Review[];
@@ -164,14 +166,16 @@ export function EdictGuide({ item }: { item: Opportunity }) {
         <p role="status">
           {analysis.status === "PENDING"
             ? "Na fila para leitura."
-            : "Consultando e lendo os documentos…"}{" "}
+            : (progressLabels[analysis.progress?.phase ?? ''] ?? "Consultando e lendo os documentos…")}{" "}
+          {analysis.status === 'RUNNING' && analysis.progress?.total !== undefined && <span>{analysis.progress.processed ?? 0} de {analysis.progress.total} anexos processados (não necessariamente lidos). </span>}
+          {analysis.progress?.currentDocument && <span>Documento atual: {analysis.progress.currentDocument}. </span>}
           Você pode sair desta tela; o trabalho continua enquanto o servidor
           estiver ligado.
         </p>
       )}
       {analysis?.stale && (
         <p role="alert" className="error-notice">
-          Esta leitura é de uma versão anterior ou os dados e anexos mudaram.
+          Esta leitura é anterior, os dados/anexos mudaram ou o mecanismo de leitura foi atualizado.
           Os registros abaixo são apenas para consulta; use a versão mais recente ou refaça a leitura.
         </p>
       )}

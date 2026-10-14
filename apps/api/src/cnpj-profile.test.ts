@@ -31,3 +31,14 @@ test('consulta usa host fixo, sem redirecionamento, e trata falhas da fonte',asy
  await assert.rejects(lookupCompany(cnpj,async()=>new Response(null,{status:404})),/não encontrado/);
  await assert.rejects(lookupCompany(cnpj,async()=>new Response(null,{status:429})),/indisponível/);
 });
+test('cadastro cadastral preserva ausência, limita textos e não infere representantes ou inscrições',()=>{
+ const result=suggestCompany({...company,nome_fantasia:'Nome comercial',logradouro:'Rua QA',numero:'10',municipio:'Porto Alegre',uf:'RS',cep:'90000000',email:null,ddd_telefone_1:'51999999999',porte:'MICRO EMPRESA',qsa:[{nome_socio:'Pessoa privada',cpf:'123'}]},cnpj);
+ assert.equal(result.registration.legalName,company.razao_social);
+ assert.equal(result.registration.email,'');assert.equal(result.registration.street,'Rua QA');
+ assert.equal(result.registration.phone,'51999999999');assert.equal(result.registration.companySize,'MICRO EMPRESA');
+ assert.equal('representative' in result.registration,false);assert.equal('stateRegistration' in result.registration,false);
+ assert.doesNotMatch(JSON.stringify(result.registration),/Pessoa privada|123/);
+});
+test('consulta limita o corpo antes de interpretar JSON',async()=>{
+ await assert.rejects(lookupCompany(cnpj,async()=>new Response('x'.repeat(512_001))),/excede o limite/);
+});

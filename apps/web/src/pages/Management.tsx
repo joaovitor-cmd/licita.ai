@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { date, send, useResource } from "../api";
+import {useDeparture} from '../Departure';
 import {
   Badge,
   Button,
@@ -37,6 +38,7 @@ type Member = {
   active: boolean;
 };
 export function WorkspaceSelector() {
+  const departure=useDeparture();
   const { session } = useSession(),
     r = useResource<{ id: string; name: string }[]>("/workspaces"),
     rights = useResource<{ multiCompany: boolean }>("/entitlements"),
@@ -50,18 +52,17 @@ export function WorkspaceSelector() {
     return () => window.removeEventListener("storage", changed);
   }, []);
   async function change(id: string) {
-    if (id === session.organization.id) return;
-    if (
-      !window.confirm(
-        "Trocar de empresa? Salve alterações pendentes antes de continuar. As outras abas também serão atualizadas.",
-      )
-    )
-      return;
-    setBusy(true);
+    if (id === session.organization.id||busy||departure.departing) return;
     try {
+      await departure.run(async commit=>{
+      setBusy(true);
       await send("/workspaces/switch", "POST", { organizationId: id });
-      localStorage.setItem("licitaro-workspace-change", String(Date.now()));
+      commit();
+      // A browser storage failure must not restore the old company after a
+      // successful server switch. This tab still reloads the confirmed context.
+      try{localStorage.setItem("licitaro-workspace-change", String(Date.now()));}catch{/* Other tabs may need a manual refresh when browser storage is disabled. */}
       window.location.assign("/app");
+      },'Trocar de empresa? As outras abas também serão atualizadas.',true);
     } catch (e) {
       toast((e as Error).message, true);
       setBusy(false);
@@ -74,7 +75,7 @@ export function WorkspaceSelector() {
       <select
         id="active-company"
         value={session.organization.id}
-        disabled={busy || r.loading}
+        disabled={busy || r.loading||departure.departing}
         onChange={(e) => change(e.target.value)}
       >
         {(r.data?.length ? r.data : [session.organization]).map((o) => (

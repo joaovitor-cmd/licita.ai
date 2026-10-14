@@ -1,4 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
+import {HomePreference} from './UserPreferences';
+const CatalogImport=lazy(()=>import('./CatalogImport').then(module=>({default:module.CatalogImport})));
 import {
   Bell,
   Building2,
@@ -61,6 +63,7 @@ import {
 } from "../ui";
 
 export function CatalogPage() {
+  const [importOpen,setImportOpen]=useState(false);
   const resource = useResource<Offering[]>("/catalog"),
     toast = useToast();
   const [modal, setModal] = useState<Offering | "new" | null>(null),
@@ -96,11 +99,13 @@ export function CatalogPage() {
         title="Catálogo de soluções"
         description="Um catálogo bem definido torna suas recomendações mais relevantes."
         actions={
+          <><Button variant="secondary" onClick={()=>setImportOpen(true)}>Importar CSV</Button>
           <Button onClick={() => setModal("new")}>
             <Plus size={17} /> Adicionar item
-          </Button>
+          </Button></>
         }
       />
+      {importOpen&&<Suspense fallback={<Loading label="Abrindo importação…"/>}><CatalogImport onClose={()=>setImportOpen(false)} onSaved={()=>{setImportOpen(false);resource.reload();}}/></Suspense>}
       <div className="mini-metrics">
         <div>
           <span className="metric-icon blue">
@@ -282,6 +287,10 @@ function OfferingModal({
     [category, setCategory] = useState(item?.category || ""),
     [keywords, setKeywords] = useState(item?.keywords.join(", ") || ""),
     [active, setActive] = useState(item?.active ?? true),
+    [unit,setUnit]=useState(item?.unit||''),
+    [unitCost,setUnitCost]=useState(item?.unitCost==null?'':String(item.unitCost)),
+    [salePrice,setSalePrice]=useState(item?.salePrice==null?'':String(item.salePrice)),
+    [priceBasis,setPriceBasis]=useState(item?.priceBasis||''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const toast = useToast();
@@ -300,6 +309,10 @@ function OfferingModal({
           category,
           keywords: splitTerms(keywords),
           active,
+          unit:unit.trim()||null,
+          unitCost:unitCost===''?null:Number(unitCost),
+          salePrice:salePrice===''?null:Number(salePrice),
+          priceBasis:priceBasis||null,
         },
       );
       toast(item ? "Item atualizado." : "Item cadastrado.");
@@ -367,6 +380,12 @@ function OfferingModal({
         <CheckRow checked={active} onChange={setActive}>
           Item ativo nas recomendações
         </CheckRow>
+        <details className="catalog-pricing"><summary>Custos, preço de venda e unidade (opcional)</summary><p className="muted small">Valores de referência do seu catálogo. Custo interno não é preço ofertado. Estes campos não preenchem propostas nem simulações automaticamente.</p><div className="form-grid">
+          <Field label="Unidade"><input aria-label="Unidade do catálogo" value={unit} maxLength={80} onChange={e=>setUnit(e.target.value)} placeholder="Ex.: página, equipamento, hora"/></Field>
+          <Field label="Periodicidade dos valores"><select aria-label="Periodicidade dos valores" value={priceBasis} onChange={e=>setPriceBasis(e.target.value as typeof priceBasis)}><option value="">Não informada</option><option value="PER_UNIT">Por unidade</option><option value="ONE_TIME">Único</option><option value="MONTHLY">Mensal</option><option value="YEARLY">Anual</option></select></Field>
+          <Field label="Custo interno unitário (R$)"><input aria-label="Custo interno unitário" type="number" min="0" max="1000000000000" step="0.0001" value={unitCost} onChange={e=>setUnitCost(e.target.value)}/></Field>
+          <Field label="Preço de venda unitário (R$)"><input aria-label="Preço de venda unitário" type="number" min="0" max="1000000000000" step="0.0001" value={salePrice} onChange={e=>setSalePrice(e.target.value)}/></Field>
+        </div></details>
         <div className="modal-footer">
           <Button
             variant="secondary"
@@ -700,7 +719,8 @@ export function ProfilePage() {
     setBusy(true);
     setError("");
     try {
-      await send("/profile", "PUT", profile);
+      const saved=await send<Profile>("/profile", "PUT", profile);
+      if(saved?.organizationName)setProfile(saved);
       window.dispatchEvent(new Event('profile-saved'));
       await refreshSession();
       toast("Perfil salvo. A compatibilidade já considera os novos critérios.");
@@ -1406,6 +1426,7 @@ export function SettingsPage() {
             Precisa redefinir a senha? Saia e use a recuperação de acesso na
             tela de login. O envio depende da configuração de e-mail.
           </p>
+          <HomePreference/>
         </section>
         <form className="card form-section" onSubmit={save}>
           <div className="section-heading">
@@ -1438,7 +1459,7 @@ export function SettingsPage() {
           <p className="muted small">
             {sources.data?.scheduler.emailConfigured
               ? "Serviço de e-mail disponível para os alertas desta empresa."
-              : "Salve e teste o serviço acima para liberar este canal. Os avisos continuam disponíveis no portal."}
+              : "O envio de e-mail ainda não está disponível. Os avisos continuam disponíveis no portal."}
           </p>
           <Field label="Aderência mínima para alertas de novos editais (%)">
             <input type="number" min="0" max="100" step="1" required value={preferences.minScore} disabled={session.role !== "ADMIN"} onChange={e => setPreferences(p => ({...p, minScore: Number(e.target.value)}))} />

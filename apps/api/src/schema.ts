@@ -37,6 +37,19 @@ CREATE TABLE IF NOT EXISTS members (
   role text NOT NULL CHECK (role IN ('ADMIN','MEMBER')),
   PRIMARY KEY (organization_id,user_id)
 );
+-- Do not replay the tour for existing accounts; only future users start pending.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_status text NOT NULL DEFAULT 'DISMISSED'
+ CHECK (onboarding_status IN ('PENDING','SEEN','DISMISSED','COMPLETED'));
+ALTER TABLE users ALTER COLUMN onboarding_status SET DEFAULT 'PENDING';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS home_page text NOT NULL DEFAULT 'overview' CHECK(home_page IN ('overview','radar'));
+CREATE TABLE IF NOT EXISTS search_profiles (
+ id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+ name text NOT NULL, description text NOT NULL DEFAULT '', filters jsonb NOT NULL,
+ revision integer NOT NULL DEFAULT 1, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS search_profiles_name_unique ON search_profiles(organization_id,lower(name));
+ALTER TABLE search_profiles ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true;
+REVOKE ALL ON search_profiles FROM PUBLIC;
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash text PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -52,6 +65,7 @@ ALTER TABLE organizations ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAU
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS plan_code text NOT NULL DEFAULT 'complete' REFERENCES commercial_plans(code);
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS access_revision integer NOT NULL DEFAULT 1;
 ALTER TABLE members ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true;
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS default_tracking_owner_id uuid REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE members ADD COLUMN IF NOT EXISTS last_access_at timestamptz;
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS environment_id uuid REFERENCES organizations(id);
 ALTER TABLE commercial_plans ADD COLUMN IF NOT EXISTS max_companies integer NOT NULL DEFAULT 1 CHECK(max_companies BETWEEN 1 AND 100);
@@ -76,6 +90,9 @@ CREATE TABLE IF NOT EXISTS reset_tokens (
   token_hash text PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   expires_at timestamptz NOT NULL
 );
+-- Company registration is independent from commercial interests/search profiles.
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS company_details jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS company_revision integer NOT NULL DEFAULT 1;
 CREATE TABLE IF NOT EXISTS catalog (
   id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   type text NOT NULL CHECK (type IN ('PRODUCT','SERVICE')), name text NOT NULL,
@@ -83,6 +100,16 @@ CREATE TABLE IF NOT EXISTS catalog (
   active boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS catalog_org_idx ON catalog(organization_id);
+ALTER TABLE catalog ADD COLUMN IF NOT EXISTS unit text;
+ALTER TABLE catalog ADD COLUMN IF NOT EXISTS unit_cost numeric(20,4) CHECK(unit_cost>=0);
+ALTER TABLE catalog ADD COLUMN IF NOT EXISTS sale_price numeric(20,4) CHECK(sale_price>=0);
+ALTER TABLE catalog ADD COLUMN IF NOT EXISTS price_basis text CHECK(price_basis IN ('PER_UNIT','ONE_TIME','MONTHLY','YEARLY'));
+CREATE TABLE IF NOT EXISTS catalog_imports (
+ organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+ request_id uuid NOT NULL, input_hash text NOT NULL, result jsonb NOT NULL,
+ imported_by uuid REFERENCES users(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(organization_id,request_id)
+);
 CREATE TABLE IF NOT EXISTS opportunities (
   id uuid PRIMARY KEY, canonical_key text NOT NULL UNIQUE, title text NOT NULL, description text NOT NULL DEFAULT '',
   agency text NOT NULL DEFAULT '', state text, city text, modality text, sphere text, value numeric(20,2),
@@ -94,6 +121,12 @@ CREATE TABLE IF NOT EXISTS opportunities (
 CREATE INDEX IF NOT EXISTS opportunities_dates_idx ON opportunities(closes_at,published_at);
 CREATE INDEX IF NOT EXISTS opportunities_state_idx ON opportunities(state,modality);
 CREATE INDEX IF NOT EXISTS opportunities_demo_idx ON opportunities(demo_org_id);
+CREATE SEQUENCE IF NOT EXISTS opportunity_public_code_seq;
+ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS public_code bigint;
+UPDATE opportunities SET public_code=nextval('opportunity_public_code_seq') WHERE public_code IS NULL;
+ALTER TABLE opportunities ALTER COLUMN public_code SET DEFAULT nextval('opportunity_public_code_seq');
+ALTER TABLE opportunities ALTER COLUMN public_code SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS opportunities_public_code_idx ON opportunities(public_code);
 ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS source_updated_at timestamptz;
 ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS review_attempted_at timestamptz;
 ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS attachment_error text;
@@ -110,6 +143,7 @@ CREATE TABLE IF NOT EXISTS edital_analyses (
  created_at timestamptz NOT NULL DEFAULT now(), finished_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS edital_analyses_lookup ON edital_analyses(organization_id,opportunity_id,created_at DESC);
+ALTER TABLE edital_analyses ADD COLUMN IF NOT EXISTS progress jsonb NOT NULL DEFAULT '{}';
 CREATE UNIQUE INDEX IF NOT EXISTS edital_analyses_active ON edital_analyses(organization_id,opportunity_id) WHERE status IN ('PENDING','RUNNING');
 CREATE TABLE IF NOT EXISTS edital_reviews (
  analysis_id uuid NOT NULL REFERENCES edital_analyses(id) ON DELETE CASCADE,
@@ -127,6 +161,16 @@ CREATE TABLE IF NOT EXISTS trackings (
   UNIQUE (organization_id,opportunity_id)
 );
 CREATE INDEX IF NOT EXISTS trackings_org_idx ON trackings(organization_id);
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS radar_order_revision bigint NOT NULL DEFAULT 0;
+ALTER TABLE trackings ADD COLUMN IF NOT EXISTS board_position bigint;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM trackings WHERE board_position IS NULL) THEN
+ WITH ranked AS (SELECT id,row_number() OVER(PARTITION BY organization_id,stage ORDER BY updated_at DESC,id)*1024 position FROM trackings) UPDATE trackings t SET board_position=ranked.position FROM ranked WHERE t.id=ranked.id AND t.board_position IS NULL;
+END IF; END $$;
+ALTER TABLE trackings ALTER COLUMN board_position SET DEFAULT 0;
+ALTER TABLE trackings ALTER COLUMN board_position SET NOT NULL;
+CREATE INDEX IF NOT EXISTS trackings_board_position_idx ON trackings(organization_id,stage,board_position,id);
+CREATE INDEX IF NOT EXISTS trackings_org_stage_order_idx ON trackings(organization_id,stage,updated_at DESC,id);
+CREATE INDEX IF NOT EXISTS trackings_org_order_idx ON trackings(organization_id,updated_at DESC,id);
 ALTER TABLE trackings ADD COLUMN IF NOT EXISTS outcome_category text CHECK(outcome_category IN ('PRICE','DOCUMENTATION','TECHNICAL','DEADLINE','REGION','STRATEGY','COMPETITION','OTHER'));
 CREATE INDEX IF NOT EXISTS trackings_commercial_idx ON trackings(organization_id,created_at DESC,id);
 CREATE TABLE IF NOT EXISTS tasks (
@@ -235,6 +279,27 @@ CREATE TABLE IF NOT EXISTS opportunity_item_pages (
  page integer NOT NULL CHECK(page BETWEEN 1 AND 400), payload jsonb NOT NULL,
  checked_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(opportunity_id,page)
 );
+CREATE TABLE IF NOT EXISTS commercial_proposals (
+ id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+ opportunity_id uuid NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+ name text NOT NULL, current_revision integer NOT NULL DEFAULT 0,
+ create_request_id uuid NOT NULL, create_input_hash text NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(organization_id,create_request_id)
+);
+CREATE INDEX IF NOT EXISTS commercial_proposals_lookup ON commercial_proposals(organization_id,opportunity_id,updated_at DESC,id);
+CREATE TABLE IF NOT EXISTS commercial_proposal_versions (
+ proposal_id uuid NOT NULL REFERENCES commercial_proposals(id) ON DELETE CASCADE,
+ revision integer NOT NULL, request_id uuid NOT NULL, input_hash text NOT NULL,
+ body jsonb NOT NULL, company_snapshot jsonb NOT NULL, source_snapshots jsonb NOT NULL,
+ catalog_snapshots jsonb NOT NULL DEFAULT '[]',
+ opportunity_snapshot jsonb NOT NULL DEFAULT '{}',
+ source_fingerprint text NOT NULL, totals jsonb NOT NULL,
+ actor_id uuid REFERENCES users(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(proposal_id,revision), UNIQUE(proposal_id,request_id)
+);
+ALTER TABLE commercial_proposal_versions ADD COLUMN IF NOT EXISTS catalog_snapshots jsonb NOT NULL DEFAULT '[]';
+ALTER TABLE commercial_proposal_versions ADD COLUMN IF NOT EXISTS opportunity_snapshot jsonb NOT NULL DEFAULT '{}';
 CREATE TABLE IF NOT EXISTS change_alert_settings (
  organization_id uuid PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
  settings jsonb NOT NULL, revision integer NOT NULL DEFAULT 1
@@ -244,6 +309,28 @@ CREATE TABLE IF NOT EXISTS opportunity_changes (
  types jsonb NOT NULL, before_data jsonb NOT NULL, after_data jsonb NOT NULL, detected_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS opportunity_changes_lookup ON opportunity_changes(opportunity_id,detected_at DESC,id);
+CREATE TABLE IF NOT EXISTS agency_watches (
+ id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+ name text NOT NULL, agency_cnpj text NOT NULL, terms jsonb NOT NULL DEFAULT '[]', excluded_terms jsonb NOT NULL DEFAULT '[]',
+ states jsonb NOT NULL DEFAULT '[]', active boolean NOT NULL DEFAULT true, revision integer NOT NULL DEFAULT 1,
+ active_since timestamptz NOT NULL DEFAULT now(), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS agency_watches_name ON agency_watches(organization_id,lower(name));
+CREATE INDEX IF NOT EXISTS agency_watches_active ON agency_watches(agency_cnpj) WHERE active;
+CREATE TABLE IF NOT EXISTS agency_watch_hits (
+ watch_id uuid NOT NULL REFERENCES agency_watches(id) ON DELETE CASCADE,
+ opportunity_id uuid NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+ rule_snapshot jsonb NOT NULL, detected_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(watch_id,opportunity_id)
+);
+CREATE INDEX IF NOT EXISTS agency_watch_hits_history ON agency_watch_hits(watch_id,detected_at DESC,opportunity_id);
+CREATE TABLE IF NOT EXISTS opportunity_change_reviews (
+ organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+ change_id uuid NOT NULL REFERENCES opportunity_changes(id) ON DELETE CASCADE,
+ reviewed_by uuid REFERENCES users(id) ON DELETE SET NULL,
+ reviewed_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(organization_id,change_id)
+);
 CREATE TABLE IF NOT EXISTS opportunity_relations (
  id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
  previous_id uuid NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,

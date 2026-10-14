@@ -1,5 +1,6 @@
 // Validates against an ephemeral local PostgreSQL, independently of .env/Supabase.
 import EmbeddedPostgres from "embedded-postgres";
+import { isolatedQaEnvironment } from "./qa-environment.mjs";
 import { mkdtemp, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -18,15 +19,15 @@ const port = reservation.address().port;
 await new Promise((resolve) => reservation.close(resolve));
 const password = randomBytes(18).toString("hex");
 const env = {
-  ...process.env,
+  ...isolatedQaEnvironment(),
   TEST_DATABASE_URL: `postgresql://qa:${password}@127.0.0.1:${port}/postgres`,
   DATABASE_SSL: "false",
   DATABASE_SSL_CA_FILE: "",
   LOCAL_PG_PORT: "",
-  NODE_ENV: "development",
+  NODE_ENV: "test",
   SCHEDULER_ENABLED: "false",
 };
-function run(args, childEnv = process.env, executable = process.execPath) {
+function run(args, childEnv = isolatedQaEnvironment(), executable = process.execPath) {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, {
       env: childEnv,
@@ -81,7 +82,7 @@ try {
         "20",
         "stop",
       ],
-      process.env,
+      isolatedQaEnvironment(),
       pg_ctl,
     );
     // The library's exit hook must not try to stop an already exited process.

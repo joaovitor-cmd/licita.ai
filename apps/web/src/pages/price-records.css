@@ -1,0 +1,10 @@
+.price-record-pagination { display:flex; justify-content:flex-end; align-items:center; gap:14px; margin-top:18px; flex-wrap:wrap; }
+.price-record-form fieldset { border:0; padding:0; margin:0; min-width:0; }
+.price-record-item { padding:16px; border:1px solid var(--border); border-radius:10px; margin:12px 0; }
+.price-record-item p,.price-record-detail p { overflow-wrap:anywhere; }
+.price-record-detail > a { display:block; margin:10px 0; }
+.price-record-notes { white-space:pre-wrap; }
+.price-record-events { padding-left:20px; }
+.price-record-events li { margin:12px 0; }
+.price-record-events span { display:block; }
+@media(max-width:600px) { .price-record-pagination { justify-content:center; } .price-record-item { padding:12px; } .price-record-form .form-grid { grid-template-columns:1fr; } }

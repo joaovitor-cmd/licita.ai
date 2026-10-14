@@ -16,7 +16,7 @@ export function routeFeature(path:string):string|null{
  if(/^\/opportunities\/[^/]+\/(preparation|checklist)|^\/checklist|^\/trackings|^\/radar-settings/.test(path))return 'radar';
  if(/^\/opportunities|^\/search-profiles|^\/agency-watches/.test(path))return 'discovery';
  if(/^\/catalog/.test(path))return 'catalog';
- if(/^\/documents/.test(path))return 'documents';
+ if(/^\/(documents|price-records)/.test(path))return 'documents';
  if(/^\/simulation/.test(path))return 'simulator';
  if(/^\/digest/.test(path))return 'digest';
  if(/^\/commercial/.test(path))return 'commercialHistory';

@@ -9,6 +9,7 @@ import "./dark.css";
 import "./selects.css";
 import "./workflow.css";
 import "./search-profiles.css";
+import "./responsive.css";
 import { initializeTheme } from "./theme";
 initializeTheme();
 // Data-router navigation supports draft blocking without replacing existing routes.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {DocumentChecklist} from './Preparation';
 import {ActivityItem} from '../ActivityItem';
 import {
@@ -20,6 +20,7 @@ import {
   Search,
   Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { RadarBoard } from "./RadarBoard";
@@ -58,6 +59,15 @@ export function RadarPage() {
     [changesOnly,setChangesOnly] = useState(false),
     [archived, setArchived] = useState(Boolean(params.get("highlight")));
   useEffect(()=>{const timer=setTimeout(()=>{setSearch(q.trim());setPage(1);},250);return()=>clearTimeout(timer);},[q]);
+  const searchInput = useRef<HTMLInputElement>(null);
+  function clearSearch() { setQ(''); setSearch(''); }
+  function removeFilter(remove: () => void) { remove(); setPage(1); searchInput.current?.focus(); }
+  const activeFilters = [
+    ...(search ? [{id:'search',label:`Busca: ${search}`,remove:clearSearch}] : []),
+    ...(owner ? [{id:'owner',label:`Responsável: ${members.data?.find(member=>member.id===owner)?.name ?? 'Selecionado'}`,remove:()=>setOwner('')}] : []),
+    ...(archived ? [{id:'archived',label:'Incluir etapas encerradas',remove:()=>setArchived(false)}] : []),
+    ...(changesOnly ? [{id:'changes',label:'Só alterações para conferir',remove:()=>setChangesOnly(false)}] : []),
+  ];
   const highlight=params.get('highlight');
   const query=new URLSearchParams({view,q:search,includeClosed:String(archived),changesOnly:String(changesOnly),page:String(view==='board'?1:page),...(owner?{owner}:{}),...(highlight&&/^[0-9a-f-]{36}$/i.test(highlight)?{highlight}:{})}).toString();
   const {data,loading,refreshing,error,reload,busy,columnErrors,more}=useRadarPagination(query);
@@ -65,43 +75,44 @@ export function RadarPage() {
   const stages = archived ? STAGES : STAGES.filter(stage=>!['WON','LOST','DISCARDED'].includes(stage.value));
   return (
     <>
-      <PageHeader
-        eyebrow="GESTÃO DE PARTICIPAÇÕES"
+      <div className="radar-heading"><PageHeader
         title="Meu radar"
-        description="Da primeira análise ao resultado. Tudo o que sua equipe precisa acompanhar."
+
         actions={<>
           {session.role==='ADMIN'&&<Button type="button" variant="secondary" onClick={()=>setSettingsOpen(true)}><UserRound size={16}/> Responsável padrão</Button>}
           <Link className="button primary" to="/app/oportunidades">
             <Plus size={17} /> Adicionar oportunidade
           </Link>
         </>}
-      />
-      <div className="radar-summary">
+      /></div>
+      <div className="radar-summary radar-summary-compact" aria-label="Indicadores das participações nos filtros">
         <div>
-          <span className="overline">EM ANDAMENTO</span>
+          <span className="overline">Em andamento</span>
           <strong>
-            {loading?'…':data?.summary.active??0} <small>participações nos filtros</small>
+            {loading?'…':data?.summary.active??0}
           </strong>
         </div>
         <div>
-          <span className="overline">VALOR POTENCIAL EM ANDAMENTO</span>
+          <span className="overline">Valor potencial</span>
           <strong>
             {loading?'…':currency(data?.summary.potential,true)}
           </strong>
           {!!data?.summary.unknownValues&&<small>{data.summary.unknownValues} sem valor informado · soma parcial</small>}
         </div>
         <div>
-          <span className="overline">TAREFAS PENDENTES</span>
+          <span className="overline">Tarefas pendentes</span>
           <strong>
             {loading?'…':data?.summary.pendingTasks??0}{" "}
-            <small>próximas ações</small>
+
           </strong>
         </div>
       </div>
-      <div className="radar-toolbar">
+      <div className="radar-toolbar radar-toolbar-compact">
+        <div className="radar-filter-controls">
         <div className="input-with-icon">
           <Search size={16} />
           <input
+            ref={searchInput}
             aria-label="Buscar no radar"
             maxLength={200}
             value={q}
@@ -121,10 +132,12 @@ export function RadarPage() {
             </option>
           ))}
         </select>
+        <div className="radar-filter-options">
         <CheckRow checked={archived} onChange={value=>{setArchived(value);setPage(1);}}>
           Incluir etapas encerradas
         </CheckRow>
         <CheckRow checked={changesOnly} onChange={value=>{setChangesOnly(value);setPage(1);}}>Só alterações para conferir</CheckRow>
+        </div></div>
         <div className="view-toggle">
           <button
             aria-label="Visualização em quadro"
@@ -144,6 +157,16 @@ export function RadarPage() {
           </button>
         </div>
       </div>
+      {!!activeFilters.length && <section className="active-search-filters radar-active-filters" aria-label="Filtros ativos do radar">
+        <div className="radar-filter-heading">
+          <strong>Filtros ativos ({activeFilters.length})</strong>
+          <Button type="button" variant="ghost" onClick={()=>removeFilter(()=>{clearSearch();setOwner('');setArchived(false);setChangesOnly(false);})}>Limpar filtros</Button>
+        </div>
+        <ul>{activeFilters.map(filter=><li key={filter.id}>
+          <span>{filter.label}</span>
+          <button type="button" aria-label={`Remover filtro: ${filter.label}`} onClick={()=>removeFilter(filter.remove)}><X size={14} aria-hidden="true"/></button>
+        </li>)}</ul>
+      </section>}
       {refreshing&&<p className="muted small" role="status">Atualizando o radar…</p>}
       {error&&data&&<ErrorNotice message={error} onRetry={reload}/>}
       {loading ? (
@@ -345,7 +368,6 @@ export function TrackingPage() {
         <p className="agency">{item.opportunity.agency}</p>
       </div>
         <div className="workspace-actions">
-          <Link className="button secondary" to={`/app/simulador?opportunityId=${item.opportunityId}`}>Simular viabilidade</Link>
         <Link
           className="button secondary"
           to={`/app/oportunidades/${item.opportunityId}`}

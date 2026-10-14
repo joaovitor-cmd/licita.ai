@@ -148,3 +148,20 @@ As rotas `/management/*` são exclusivas da API do console (3001 no preview), co
 - `PATCH /trackings/:id` aceita `outcomeCategory` opcional/nulo (PRICE, DOCUMENTATION, TECHNICAL, DEADLINE, REGION, STRATEGY, COMPETITION, OTHER). Mudança de etapa sem categoria explícita remove a categoria anterior; texto livre é preservado.
 - `GET /commercial-report?from=YYYY-MM-DD&to=YYYY-MM-DD&ownerId=uuid&stage=WON&page=1`: datas opcionais inclusivas, referentes à criação no radar em Brasília. Datas e responsável afetam todo relatório; stage afeta apenas a lista. Agregados e página compartilham um snapshot SQL e são isolados por organização.
 - Resposta: summary, motivos, grupos mensais (até 24 meses com entradas), etapas, lista de 25 registros, contagem e páginas. Taxa sem base é null; valores previstos são strings decimais com contagem de valores ausentes. Não representam receita contratada/recebida.
+
+## Biblioteca: modelos e datas de revisão
+- Modelos de apoio no frontend, editáveis e dependentes de revisão humana; imprimir/salvar PDF e cadastrar arquivo assinado. Não são certificados nem assinados automaticamente.
+- PATCH `/documents/:id` `{expiresAt: ISO date/datetime | null}`: altera somente prazo, restrito à empresa autenticada; retorno no formato do GET `/documents`. Não renova conteúdo do arquivo.
+- Sem data: sem alerta automático. Com data: aviso no sistema a partir de 15 dias antes e outro quando vencido; deduplicação por empresa, documento, data e fase. Respeita preferências de aviso no sistema e ambientes ativos.
+- Verificação documental a cada minuto pelo worker da API normal; independente da coleta de oportunidades. Não roda no modo QA isolado. Serviço precisa estar em execução; indisponibilidade é recuperada na próxima checagem.
+- E-mail documental desativado nesta etapa, mesmo quando SMTP estiver configurado. Não houve alteração de schema nesta demanda.
+
+## Reconciliação de fontes e atas de registro de preços
+- GET `/opportunities/:id/source-observations` → últimas observações por fonte `{sourceCode,sourceName,sourceUrl,reportedUpdatedAt,consultedAt,decision,reason,snapshot}`. Mesma visibilidade da oportunidade. `decision`: accepted/rejected/conflicting. Data de consulta não comprova atualização; campos ausentes preservados podem ter origem anterior. Versão comprovadamente antiga não substitui; divergência sem datas comparáveis ou com datas iguais preserva o snapshot aceito. Não altera o identificador canônico PNCP.
+- GET `/price-records?q=&page=1&pageSize=20&archived=false&highlight=<uuid opcional>` → `{items,total,page,pages}`. PageSize máximo 50. GET `/price-records/:id` → registro da empresa. GET `/price-records/:id/events?page=1` → array de até 50 eventos, recentes primeiro.
+- POST `/price-records` e PUT `/price-records/:id` (ADMIN) → `{number,title,agency,opportunityId,documentId,ownerId,startsOn,endsOn,notes,items}`; PUT exige `revision`. Datas civis YYYY-MM-DD, fim inclusivo não anterior ao início. Itens até 100: `{description,unit,quantity,unitPrice,supplierName,supplierTaxId}`; números são strings com ponto, até 12 dígitos inteiros e 6 casas; quantidade >0 e preço >=0. Nenhum cálculo ou receita inferida.
+- Vínculos opcionais: oportunidade visível, membro ativo da empresa, PDF privado da própria empresa. Cadastro manual não confirma a situação na fonte. Não exige origem no radar.
+- PATCH `/price-records/:id/archive` ou `/restore` (ADMIN) `{revision}`; arquivamento preserva dados/eventos. Conflito retorna 409, outras empresas 404. Retorno inclui id, nomes dos vínculos, datas, items, revision, archived, createdAt e updatedAt.
+- Alertas de vigência no portal: 30 dias antes, inclusive hoje, e vencido (fase separada), calendário Brasília; chave por ata/data/fase; edição da data resolve avisos antigos, arquivamento resolve avisos, restauração reconcilia o aviso atual. Sem e-mail nesta etapa; processamento até 200 candidatos elegíveis por ciclo do worker. API desligada não verifica prazos.
+
+- DELETE `/documents/:id` retorna 409 enquanto o PDF estiver vinculado a alguma ata da empresa, inclusive arquivada. Exige desvinculação explícita para preservar o documento original.

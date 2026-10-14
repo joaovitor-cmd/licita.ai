@@ -38,9 +38,6 @@ export function ProcurementJourney({ item }: { item: Opportunity }) {
         <li>
           <strong>2. Avaliar</strong>
           <span>Confira capacidade, custos e riscos.</span>
-          <Link to={`/app/simulador?opportunityId=${item.id}`}>
-            Abrir simulador
-          </Link>
         </li>
         <li>
           <strong>3. Preparar</strong>

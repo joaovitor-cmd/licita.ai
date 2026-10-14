@@ -1,0 +1,26 @@
+/* Shared responsive layout: use the workspace, keep overflow local to data views. */
+.page-content, .console-content { max-width: none; width: 100%; min-width: 0; }
+.main-shell, .console-main { min-width: 0; }
+.page-content > *, .console-content > * { min-width: 0; }
+.page-header { flex-wrap: wrap; }
+.page-header > div { min-width: 0; }
+.header-actions { flex-wrap: wrap; }
+:is(.detail-layout,.profile-layout,.settings-grid,.form-grid,.management-layout,.plan-drafts,.sources-grid,.commercial-filters,.commercial-metrics,.console-kpis) > * { min-width: 0; }
+.table-wrap, .console-table-wrap { min-width: 0; max-width: 100%; overflow-x: auto; }
+:is(.page-content,.console-content) :is(.field,input,select,textarea) { min-width: 0; }
+:is(.page-content,.console-content) :is(h1,h2,h3,.info-note,.field-help) { overflow-wrap: anywhere; }
+@media (min-width: 1600px) {
+  .detail-layout { grid-template-columns: minmax(0, 1fr) minmax(300px, 24%); }
+  .profile-layout { grid-template-columns: minmax(0, 1fr) minmax(280px, 22%); }
+}
+@media (max-width: 780px) {
+  .detail-layout, .profile-layout, .management-layout, .settings-grid { grid-template-columns: minmax(0, 1fr); }
+  .page-header { align-items: flex-start; gap: 14px; }
+  .header-actions { max-width: 100%; }
+  .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 540px) {
+  .form-grid, .settings-grid, .sources-grid, .plan-drafts { grid-template-columns: minmax(0, 1fr); }
+  .header-actions { width: 100%; }
+  .header-actions .button { white-space: normal; }
+}

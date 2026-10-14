@@ -1,0 +1,12 @@
+.source-reliability { margin-block: 18px; min-width: 0; color: var(--text); }
+.source-reliability summary { cursor: pointer; padding-block: 12px; font-weight: 600; }
+.source-reliability summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.source-reliability-warning { border-left: 3px solid #b7791f; background: #b7791f12; padding: 12px 16px; border-radius: 6px; line-height: 1.6; }
+.source-reliability-list { list-style: none; padding: 0; margin: 12px 0 0; }
+.source-reliability-list li { padding: 16px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.source-reliability-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.source-reliability-list dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-block: 12px; }
+.source-reliability-list dt { font-size: 12px; color: var(--muted); }
+.source-reliability-list dd { margin: 4px 0 0; font-size: 13px; }
+.source-reliability-list p { font-size: 13px; line-height: 1.6; }
+@media(max-width: 540px) { .source-reliability-list dl { grid-template-columns: minmax(0, 1fr); } }

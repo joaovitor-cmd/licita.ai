@@ -129,27 +129,20 @@ function PreparationPanel({
             {s.documentCount
               ? `${s.pendingDocuments} de ${s.documentCount} itens documentais pendentes`
               : "Checklist documental ainda não definido"}{" "}
-            ·{" "}
-            {s.simulationCount
-              ? `${s.simulationCount} simulação(ões) registrada(s)`
-              : "Simulação ainda não registrada"}{" "}
             · {s.pendingTasks} tarefas pendentes
           </p>
           <p className="info-note">
-            <strong>Próximo passo sugerido:</strong> {s.nextAction}
+            <strong>Próximo passo sugerido:</strong> {/simula/i.test(s.nextAction)?"Confira capacidade, custos e riscos com sua equipe.":s.nextAction}
           </p>
           <p className="muted small">
             Este resumo retrata os registros da equipe, não habilitação ou
-            chance de ganhar. Uma simulação salva não comprova viabilidade.
+            chance de ganhar.
             {s.incompleteAttachments
               ? " A cobertura dos anexos ainda exige conferência manual."
               : ""}
             {s.stale ? " A leitura está desatualizada." : ""}
           </p>
           <div className="button-row">
-            <Link to={`/app/simulador?opportunityId=${opportunityId}`}>
-              Revisar simulação
-            </Link>
             {trackingId && (
               <Link to={`/app/radar/${trackingId}`}>
                 Abrir tarefas e responsáveis
@@ -492,9 +485,6 @@ export function TopicActions({
           <Button type="submit" busy={busy} disabled={disabled}>
             Confirmar e criar ação
           </Button>
-          <Link to={`/app/simulador?opportunityId=${opportunityId}`}>
-            Revisar simulação
-          </Link>
         </div>
       </form>
       {disabled && (

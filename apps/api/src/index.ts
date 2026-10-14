@@ -134,10 +134,12 @@ const port = Number(process.env.PORT ?? 3000);
 const server = app.listen(port, process.env.API_HOST ?? "127.0.0.1", () =>
   console.log(`Licitaro API pronta em http://localhost:${port}`),
 );
-await startJobs();
-startEmailWorker();
-startAnalysisWorker();
-startDigestWorker();
+if (process.env.LICITARO_ISOLATED_QA !== "true") {
+  await startJobs();
+  startEmailWorker();
+  startAnalysisWorker();
+  startDigestWorker();
+}
 for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, () => {
     stopJobs();

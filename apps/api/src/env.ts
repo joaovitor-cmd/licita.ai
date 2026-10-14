@@ -1,6 +1,12 @@
 import { config } from "dotenv";
 import { fileURLToPath } from "node:url";
-config({
+const isolatedQa = process.env.LICITARO_ISOLATED_QA === "true";
+if (isolatedQa) {
+  const databaseUrl = new URL(process.env.DATABASE_URL ?? "");
+  if (process.env.NODE_ENV !== "test" || !["localhost", "127.0.0.1"].includes(databaseUrl.hostname) || !/^\/licitaro_qa_\d+$/.test(databaseUrl.pathname)) {
+    throw new Error("Isolated QA requires a disposable local test database.");
+  }
+} else config({
   path: fileURLToPath(new URL("../../../.env", import.meta.url)),
   quiet: true,
 } as any);

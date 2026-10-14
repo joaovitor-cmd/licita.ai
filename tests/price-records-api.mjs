@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+export async function testPriceRecords({a,b,db,sa,sb}){
+ const date=(days)=>{const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());return new Date(Date.parse(today+'T12:00:00Z')+days*86400000).toISOString().slice(0,10);};
+ const doc=randomUUID(),foreignDoc=randomUUID();
+ for(const [id,org] of [[doc,sa.organization.id],[foreignDoc,sb.organization.id]])await db.query("INSERT INTO documents(id,organization_id,name,category,file_name,mime_type,size,content) VALUES($1,$2,'Ata PDF','Ata','ata.pdf','application/pdf',5,$3)",[id,org,Buffer.from('%PDF-')]);
+ const body={number:'QA-1/2026',title:'Ata de impressão',agency:'Órgão QA',startsOn:date(-1),endsOn:date(30),documentId:doc,ownerId:sa.user.id,items:[{description:'Impressão',unit:'página',quantity:'1000.000001',unitPrice:'0.123456',supplierName:'Fornecedor QA',supplierTaxId:''}],notes:'Cadastro manual'};
+ await a('/price-records','POST',{...body,documentId:foreignDoc},400);
+ await a('/price-records','POST',{...body,endsOn:date(-2)},400);
+ const record=await a('/price-records','POST',body,201);assert.equal(record.items[0].unitPrice,'0.123456');assert.equal(record.startsOn,body.startsOn);assert.equal(record.documentName,'Ata PDF');
+ await a('/documents/'+doc,'DELETE',undefined,409);
+ await b('/price-records/'+record.id,'GET',undefined,404);await b('/price-records/'+record.id+'/events','GET',undefined,404);await b('/price-records/'+record.id,'PUT',{...body,revision:1},404);
+ assert.equal((await a('/price-records?q=impressão')).items.filter(r=>r.id===record.id).length,1);
+ assert.equal((await a('/price-records?highlight='+record.id)).items.length,1);
+ await db.query("UPDATE members SET role='MEMBER' WHERE user_id=$1 AND organization_id=$2",[sa.user.id,sa.organization.id]);
+ await a('/price-records/'+record.id,'GET');await a('/price-records','POST',body,403);await a('/price-records/'+record.id+'/archive','PATCH',{revision:1},403);
+ await db.query("UPDATE members SET role='ADMIN' WHERE user_id=$1 AND organization_id=$2",[sa.user.id,sa.organization.id]);
+ await db.query('UPDATE organizations SET is_demo=false WHERE id=$1',[sa.organization.id]);
+ const {priceRecordNotifications}=await import('../apps/api/dist/price-records.js');
+ await priceRecordNotifications();await priceRecordNotifications();
+ assert.equal((await db.query('SELECT * FROM notifications WHERE dedupe_key LIKE $1',[`price-record:${record.id}:%`])).rowCount,1);
+ const updated=await a('/price-records/'+record.id,'PUT',{...body,endsOn:date(-1),startsOn:date(-2),revision:1});assert.equal(updated.revision,2);
+ await a('/price-records/'+record.id,'PUT',{...body,revision:1},409);
+ await priceRecordNotifications();
+ assert.equal((await db.query('SELECT * FROM notifications WHERE dedupe_key LIKE $1 AND NOT read',[`price-record:${record.id}:%`])).rowCount,1);
+ assert.equal((await db.query('SELECT * FROM email_deliveries WHERE notification_id IN (SELECT id FROM notifications WHERE dedupe_key LIKE $1)',[`price-record:${record.id}:%`])).rowCount,0);
+ const archived=await a('/price-records/'+record.id+'/archive','PATCH',{revision:2});assert.equal(archived.archived,true);
+ assert.equal((await a('/price-records?highlight='+record.id)).items.length,0);assert.equal((await a('/price-records?archived=true&highlight='+record.id)).items.length,1);
+ assert.equal((await a('/price-records/'+record.id+'/events')).length,3);
+ assert.equal((await db.query('SELECT * FROM notifications WHERE dedupe_key LIKE $1 AND NOT read',[`price-record:${record.id}:%`])).rowCount,0);
+ await priceRecordNotifications();assert.equal((await db.query('SELECT * FROM notifications WHERE dedupe_key LIKE $1',[`price-record:${record.id}:%`])).rowCount,2);
+ await a('/price-records/'+record.id+'/restore','PATCH',{revision:3});assert.equal((await a('/price-records?highlight='+record.id)).items.length,1);
+ assert.equal((await db.query('SELECT * FROM notifications WHERE dedupe_key LIKE $1 AND NOT read',[`price-record:${record.id}:%`])).rowCount,1);
+ await db.query('UPDATE organizations SET is_demo=true WHERE id=$1',[sa.organization.id]);
+ console.log('PASS: atas CRUD, decimal precision, revision, permissions, company isolation, PDF linkage, history and reminder lifecycle.');
+}

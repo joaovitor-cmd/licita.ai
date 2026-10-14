@@ -1,3 +1,5 @@
+import {priceRecordSchemaSql} from './price-record-schema.js';
+import {sourceReconciliationSchemaSql} from './source-reconciliation-schema.js';
 // Deliberately isolated from any earlier Prisma tables. No destructive migration.
 import {searchSchemaSql} from './search-schema.js';
 export const schema = `
@@ -342,4 +344,6 @@ CREATE TABLE IF NOT EXISTS opportunity_relations (
 );
 CREATE INDEX IF NOT EXISTS opportunity_relations_org ON opportunity_relations(organization_id,previous_id,new_id);
 ${searchSchemaSql}
+${priceRecordSchemaSql}
+${sourceReconciliationSchemaSql}
 `;

@@ -1,3 +1,4 @@
+import {normalizeDocumentFilename} from './document-filename.js';
 import { Router } from "express";
 import multer from "multer";
 import { randomUUID } from "node:crypto";
@@ -45,6 +46,12 @@ import {normalizeCnpj,lookupCompany} from './cnpj-profile.js';
 export const router = Router();
 import {enforcePlan,entitlements} from './entitlements.js';
 router.use(enforcePlan);
+import {priceRecordRoutes} from './price-records.js';
+priceRecordRoutes(router);
+router.get('/opportunities/:id/source-observations',async(req,res)=>{
+ const oid=z.uuid().parse(req.params.id);await getOpportunity(current(req),oid);
+ res.json((await rows('SELECT * FROM opportunity_source_observations WHERE opportunity_id=$1 ORDER BY consulted_at DESC,source_code',[oid])).map(r=>({sourceCode:r.source_code,sourceName:r.source_code==='pncp'?'PNCP':r.source_code==='comprasgov'?'Compras.gov.br':r.source_code,sourceUrl:r.source_url,reportedUpdatedAt:iso(r.reported_updated_at),consultedAt:iso(r.consulted_at),decision:r.decision,reason:r.reason,snapshot:r.snapshot})));
+});
 import {preparationRoutes} from './preparation.js';
 preparationRoutes(router);
 import {checklistRoutes} from './checklist-templates.js';
@@ -551,7 +558,7 @@ const mapDocument = (r: any) => ({
   name: r.name,
   category: r.category,
   expiresAt: iso(r.expires_at),
-  fileName: r.file_name,
+  fileName: normalizeDocumentFilename(r.file_name),
   mimeType: r.mime_type,
   size: r.size,
   createdAt: iso(r.created_at),
@@ -577,7 +584,8 @@ router.post(
       .object({ name: short, category: short, expiresAt: dateValue.optional() })
       .strict()
       .parse({ ...req.body, expiresAt: req.body.expiresAt || null });
-    const extension = file.originalname.toLowerCase().split(".").pop() ?? "";
+    const fileName = normalizeDocumentFilename(file.originalname);
+    const extension = fileName.toLowerCase().split(".").pop() ?? "";
     const allowed: Record<string, string> = {
       pdf: "application/pdf",
       docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -623,8 +631,8 @@ router.post(
           orgId(req),
           b.name,
           b.category,
-          b.expiresAt,
-          file.originalname.replace(/[\r\n\\/]/g, "_"),
+          b.expiresAt ? b.expiresAt.slice(0,10)+"T00:00:00Z" : null,
+          fileName,
           allowed[extension],
           file.size,
           file.buffer,
@@ -635,6 +643,20 @@ router.post(
     res.status(201).json(mapDocument(result));
   },
 );
+router.patch('/documents/:id',async(req,res)=>{
+ const b=z.object({expiresAt:dateValue}).strict().parse(req.body);
+ // This is a calendar date: persist its submitted day explicitly in UTC.
+ const expiresAt=b.expiresAt?b.expiresAt.slice(0,10)+'T00:00:00Z':null;
+ const documentId=id(req.params.id),organizationId=orgId(req);
+ const result=await transaction(async db=>{
+  const previous=await one('SELECT expires_at FROM documents WHERE id=$1 AND organization_id=$2 FOR UPDATE',[documentId,organizationId],db);
+  if(!previous)throw new HttpError(404,'Documento não encontrado.');
+  const updated=await one('UPDATE documents SET expires_at=$3 WHERE id=$1 AND organization_id=$2 RETURNING id,name,category,expires_at,file_name,mime_type,size,created_at',[documentId,organizationId,expiresAt],db);
+  if((iso(previous.expires_at)?.slice(0,10)??null)!==(expiresAt?.slice(0,10)??null))await db.query('UPDATE notifications SET read=true WHERE organization_id=$1 AND dedupe_key LIKE $2',[organizationId,'document-date:'+documentId+':%']);
+  return updated;
+ });
+ res.json(mapDocument(result));
+});
 router.get("/documents/:id/download", async (req, res) => {
   const d = await one(
     "SELECT * FROM documents WHERE id=$1 AND organization_id=$2",
@@ -642,19 +664,18 @@ router.get("/documents/:id/download", async (req, res) => {
   );
   if (!d) throw new HttpError(404, "Documento não encontrado.");
   res.setHeader("Cache-Control", "private, no-store");
-  res.attachment(d.file_name).type(d.mime_type).send(d.content);
+  res.attachment(normalizeDocumentFilename(d.file_name)).type(d.mime_type).send(d.content);
 });
-router.delete("/documents/:id", async (req, res) => {
-  if (
-    !(
-      await pool.query(
-        "DELETE FROM documents WHERE id=$1 AND organization_id=$2",
-        [id(req.params.id), orgId(req)],
-      )
-    ).rowCount
-  )
-    throw new HttpError(404, "Documento não encontrado.");
-  res.json({ ok: true });
+router.delete('/documents/:id',async(req,res)=>{
+ const documentId=id(req.params.id),organizationId=orgId(req);
+ await transaction(async db=>{
+  const existing=await one('SELECT id FROM documents WHERE id=$1 AND organization_id=$2 FOR UPDATE',[documentId,organizationId],db);
+  if(!existing)throw new HttpError(404,'Documento não encontrado.');
+  if(await one('SELECT id FROM price_records WHERE organization_id=$1 AND document_id=$2 LIMIT 1',[organizationId,documentId],db))throw new HttpError(409,'Este PDF está vinculado a uma ata. Remova o vínculo na ata antes de excluir o documento.');
+  await db.query('DELETE FROM documents WHERE id=$1 AND organization_id=$2',[documentId,organizationId]);
+  await db.query('UPDATE notifications SET read=true WHERE organization_id=$1 AND dedupe_key LIKE $2',[organizationId,'document-date:'+documentId+':%']);
+ });
+ res.json({ok:true});
 });
 const mapNotification = (r: any) => ({
   id: r.id,

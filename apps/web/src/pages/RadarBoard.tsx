@@ -48,7 +48,7 @@ export function RadarBoard({ items, stages, members, highlight, onUpdate, onTask
   }
   return <>
     <p className="page-note">Arraste pela alça: sobre outro cartão para posicionar antes, ou para o espaço livre da coluna para colocar ao final. Em outra etapa, o cartão entra no início. Você também pode usar “Mais ações”. Datas e horários de Brasília.</p>
-    <div ref={root} className="kanban radar-board" aria-label="Quadro de participações por etapa" aria-busy={busy}>
+    <div ref={root} className="kanban radar-board" tabIndex={0} role="region" aria-label="Quadro de participações por etapa" aria-busy={busy}>
       {stages.map(stage => {
         const column = items.filter(item => item.stage === stage.value);
         return <section key={stage.value} aria-label={stage.label}

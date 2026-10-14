@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import {HomePreference} from './UserPreferences';
 const CatalogImport=lazy(()=>import('./CatalogImport').then(module=>({default:module.CatalogImport})));
 import {
@@ -23,7 +23,10 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link,useSearchParams } from "react-router-dom";
+import {downloadDocumentsZip} from '../document-download';
+import {DocumentTemplates} from "../DocumentTemplates";
+import {DocumentDeadline} from "../DocumentDeadline";
 import {
   api,
   date,
@@ -412,23 +415,27 @@ const calendarDate = (value: string | null) =>
         month: "short",
         year: "numeric",
       }).format(new Date(value))
-    : "Sem vencimento";
+    : "Sem prazo";
 function expiry(value: string | null) {
-  if (!value) return { label: "Sem validade definida", color: "slate" };
-  const days = Math.ceil(
-    (new Date(value.slice(0, 10) + "T23:59:59-03:00").getTime() - Date.now()) /
-      86400000,
-  );
+  if (!value) return { label: "Sem prazo definido", color: "slate" };
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const days=Math.round((Date.parse(value.slice(0,10)+'T12:00:00Z')-Date.parse(today+'T12:00:00Z'))/86400000);
   return days < 0
-    ? { label: "Vencido", color: "red" }
-    : days <= 30
+    ? { label: "Prazo ultrapassado", color: "red" }
+    : days <= 15
       ? {
-          label: `Vence em ${days} dia${days === 1 ? "" : "s"}`,
+          label: days===0?"Prazo hoje":`Revisar em ${days} dia${days === 1 ? "" : "s"}`,
           color: "amber",
         }
-      : { label: "Dentro da validade", color: "green" };
+      : { label: "Prazo definido", color: "green" };
 }
 export function DocumentsPage() {
+  const [params]=useSearchParams();
+  const {session}=useSession();
+  const [selectedIds,setSelectedIds]=useState<string[]>([]),[downloading,setDownloading]=useState(false);
+  const selectAllRef=useRef<HTMLInputElement>(null),downloadController=useRef<AbortController|null>(null);
+  const highlight=params.get('highlight');
+  const [templatesOpen,setTemplatesOpen]=useState(false),[draftName,setDraftName]=useState(''),[deadlineDocument,setDeadlineDocument]=useState<DocumentItem|null>(null);
   const resource = useResource<DocumentItem[]>("/documents"),
     toast = useToast();
   const [modal, setModal] = useState(false),
@@ -436,8 +443,21 @@ export function DocumentsPage() {
     [busy, setBusy] = useState(false),
     [q, setQ] = useState("");
   const items = (resource.data || []).filter((d) =>
-    `${d.name} ${d.category}`.toLowerCase().includes(q.toLowerCase()),
+    (!highlight||d.id===highlight)&&`${d.name} ${d.category}`.toLowerCase().includes(q.toLowerCase()),
   );
+  const selectedDocuments=items.filter(item=>selectedIds.includes(item.id));
+  const allSelected=items.length>0&&selectedDocuments.length===items.length;
+  const partialSelected=selectedDocuments.length>0&&!allSelected;
+  useEffect(()=>{if(selectAllRef.current)selectAllRef.current.indeterminate=partialSelected;},[partialSelected,resource.loading,items.length]);
+  useEffect(()=>{setSelectedIds([]);},[q,highlight]);
+  useEffect(()=>()=>downloadController.current?.abort(),[]);
+  async function downloadSelected(){
+    if(downloading||!selectedDocuments.length)return;
+    const controller=new AbortController();downloadController.current=controller;setDownloading(true);
+    try{await downloadDocumentsZip(selectedDocuments,session.organization.id,controller.signal);if(!controller.signal.aborted)toast('ZIP dos documentos selecionados preparado.');}
+    catch(error){if(!controller.signal.aborted)toast((error as Error).message,true);}
+    finally{if(!controller.signal.aborted){setDownloading(false);downloadController.current=null;}}
+  }
   async function deleteItem() {
     if (!remove) return;
     setBusy(true);
@@ -459,9 +479,7 @@ export function DocumentsPage() {
         title="Documentos e certidões"
         description="Mantenha os arquivos de habilitação organizados e acompanhe a validade."
         actions={
-          <Button onClick={() => setModal(true)}>
-            <Upload size={17} /> Adicionar documento
-          </Button>
+<><Button variant="secondary" onClick={()=>setTemplatesOpen(true)}><FileText size={17}/> Modelos de declarações</Button><Button onClick={()=>{setDraftName('');setModal(true);}}><Upload size={17}/> Adicionar documento</Button></>
         }
       />
       <div className="info-note">
@@ -474,17 +492,22 @@ export function DocumentsPage() {
       </div>
       <div className="list-toolbar">
         <p className="muted">
-          {resource.data?.length || 0} documentos · limite local de 100 MB
+          {resource.data?.length || 0} documentos · alertas 15 dias antes do prazo
         </p>
         <div className="input-with-icon">
           <Search size={16} />
           <input
             aria-label="Buscar documentos"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            disabled={downloading} onChange={(e) => {setQ(e.target.value);setSelectedIds([]);}}
             placeholder="Buscar documento…"
           />
         </div>
+      </div>
+      <div className="document-selection-toolbar">
+        <label className="check-row"><input ref={selectAllRef} type="checkbox" aria-label="Selecionar todos os documentos visíveis" checked={allSelected} disabled={downloading||resource.loading||!!resource.error||!items.length} onChange={e=>setSelectedIds(e.target.checked?items.map(item=>item.id):[])}/> Selecionar todos os visíveis</label>
+        <span className="muted small" role="status" aria-live="polite">{selectedDocuments.length} selecionado{selectedDocuments.length===1?'':'s'}</span>
+        <div className="button-row"><Button variant="ghost" disabled={downloading||!selectedDocuments.length} onClick={()=>setSelectedIds([])}>Limpar seleção</Button><Button variant="secondary" disabled={!selectedDocuments.length||resource.loading||!!resource.error} busy={downloading} onClick={downloadSelected}><Download size={16}/> Baixar selecionados (ZIP)</Button></div>
       </div>
       {resource.loading ? (
         <Loading />
@@ -495,9 +518,10 @@ export function DocumentsPage() {
           <table>
             <thead>
               <tr>
+                <th scope="col">Selecionar</th>
                 <th>Documento</th>
                 <th>Categoria</th>
-                <th>Vencimento</th>
+                <th>Prazo</th>
                 <th>Situação</th>
                 <th>Arquivo</th>
                 <th>Ações</th>
@@ -506,6 +530,7 @@ export function DocumentsPage() {
             <tbody>
               {items.map((item) => (
                 <tr key={item.id}>
+                  <td><input type="checkbox" aria-label={`Selecionar ${item.name}`} checked={selectedIds.includes(item.id)} disabled={downloading} onChange={e=>setSelectedIds(previous=>e.target.checked?[...previous,item.id]:previous.filter(id=>id!==item.id))}/></td>
                   <td>
                     <span className="document-table-name">
                       <span className="file-icon">
@@ -529,6 +554,7 @@ export function DocumentsPage() {
                   </td>
                   <td>
                     <div className="button-row">
+                      <Button variant="ghost" onClick={()=>setDeadlineDocument(item)}>Editar prazo</Button>
                       <a
                         className="icon-button"
                         href={`/api/documents/${item.id}/download`}
@@ -570,8 +596,11 @@ export function DocumentsPage() {
         Aceita PDF, DOCX, XLSX, PNG e JPG, até 10 MB por arquivo. Arquivos não
         passam por análise antivírus nesta versão local.
       </p>
+      {highlight&&<Link className="text-link" to="/app/documentos">Mostrar todos os documentos</Link>}
+      <DocumentTemplates open={templatesOpen} onClose={()=>setTemplatesOpen(false)} onRegister={name=>{setTemplatesOpen(false);setDraftName(name);setModal(true);}}/>
+      {deadlineDocument&&<DocumentDeadline document={deadlineDocument} onClose={()=>setDeadlineDocument(null)} onSaved={()=>{setDeadlineDocument(null);resource.reload();}}/>}
       {modal && (
-        <DocumentModal
+        <DocumentModal initialName={draftName} onBackToTemplate={draftName?()=>{setModal(false);setTemplatesOpen(true);}:undefined}
           onClose={() => setModal(false)}
           onSaved={() => {
             setModal(false);
@@ -592,14 +621,18 @@ export function DocumentsPage() {
   );
 }
 function DocumentModal({
+  initialName = "",
+  onBackToTemplate,
   onClose,
   onSaved,
 }: {
+  initialName?: string;
+  onBackToTemplate?: () => void;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [name, setName] = useState(""),
-    [category, setCategory] = useState("Certidão"),
+  const [name, setName] = useState(initialName),
+    [category, setCategory] = useState(initialName?"Declaração":"Certidão"),
     [expires, setExpires] = useState(""),
     [file, setFile] = useState<File | null>(null),
     [busy, setBusy] = useState(false),
@@ -613,6 +646,7 @@ function DocumentModal({
     try {
       if (file.size > 10 * 1024 * 1024)
         throw new Error("O arquivo deve ter até 10 MB.");
+      if(initialName&&(!/\.pdf$/i.test(file.name)||(file.type&&file.type!=='application/pdf')))throw new Error('Envie a declaração preenchida e assinada em PDF.');
       const data = new FormData();
       data.append("file", file);
       data.append("name", name);
@@ -652,6 +686,7 @@ function DocumentModal({
             >
               {[
                 "Certidão",
+                "Declaração",
                 "Societário",
                 "Habilitação técnica",
                 "Financeiro",
@@ -662,7 +697,7 @@ function DocumentModal({
               ))}
             </select>
           </Field>
-          <Field label="Vencimento (opcional)">
+          <Field label="Vencimento ou próxima revisão" hint="Defina o prazo real ou uma data interna de revisão. Sem data, não há alerta automático.">
             <input
               type="date"
               value={expires}
@@ -673,17 +708,18 @@ function DocumentModal({
         <Field
           label="Arquivo"
           required
-          hint="PDF, DOCX, XLSX, PNG ou JPG. Máximo 10 MB."
+          hint={initialName?"Declaração preenchida e assinada em PDF. Máximo 10 MB.":"PDF, DOCX, XLSX, PNG ou JPG. Máximo 10 MB."}
         >
           <input
             className="file-input"
             type="file"
             required
-            accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg"
+            accept={initialName?".pdf,application/pdf":".pdf,.docx,.xlsx,.png,.jpg,.jpeg"}
             onChange={(e) => setFile(e.target.files?.[0] || null)}
           />
         </Field>
         <div className="modal-footer">
+          {onBackToTemplate&&<Button type="button" variant="secondary" disabled={busy} onClick={onBackToTemplate}>Voltar ao modelo</Button>}
           <Button
             type="button"
             variant="secondary"

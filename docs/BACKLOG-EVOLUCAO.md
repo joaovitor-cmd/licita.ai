@@ -38,8 +38,8 @@ Responsável técnico: Codex. Decisões de produto/comerciais: proprietário do 
 
 | ID | Prioridade | Status | Evidência / próxima entrega |
 |---|---|---|---|
-| LIC-10 | P0 | Precisa de melhoria | Coleta/revisão, classificação de alterações e disponibilidade. Validar cada situação com amostras oficiais. |
-| LIC-11 | P0 | Precisa de melhoria | Mudanças persistidas, comparação e resumos sem JSON/URLs brutas. Conferência explícita por alteração/empresa com autor/data, histórico intacto e indicação no radar; mudanças novas permanecem pendentes. Falta preservar diferenças por conteúdo do arquivo, não somente URL. |
+| LIC-10 | P0 | Precisa de melhoria | Reconciliação conservadora entre PNCP/Compras.gov: versão antiga rejeitada, divergência sem data comparável preservada e observações por fonte exibidas. Falta auditoria com amostras reais, comparação de bytes de anexos e novos conectores. |
+| LIC-11 | P0 | Precisa de melhoria | Histórico antes/depois e conferência existentes; snapshots por fonte com data informada/consultada e divergência visível, sem eventos fictícios. Campos ausentes preservados podem ter origem anterior. Falta conteúdo binário de anexos e resolução manual de conflitos. |
 | LIC-12 | P2 | Não iniciada | Registro manual de prazo e origem pode preceder automação. Cálculo depende de validação especializada. |
 | LIC-13 | P1 | Precisa de melhoria | Histórico comercial/interno e mudanças existem. Integrar atas e resultados oficiais até finalização. |
 | LIC-14 | P1 | Precisa de melhoria | Relações sugeridas e critérios de evidência existentes. Completar conferência e diferenciação de republicação/similaridade. |
@@ -61,13 +61,13 @@ Responsável técnico: Codex. Decisões de produto/comerciais: proprietário do 
 | ID | Prioridade | Status | Evidência / próxima entrega |
 |---|---|---|---|
 | LIC-15 | P1 | Precisa de melhoria | Biblioteca, checklist, estados de conferência e modelos reutilizáveis acessíveis na aba Documentação da participação, sem restaurar os cards removidos. Falta extração completa e integração de declarações. |
-| LIC-43 | P2 | Não iniciada | Modelos próprios de declarações revisados/versionados. PDFs concorrentes servem de referência funcional. |
-| LIC-44 | P2 | Não iniciada | Preenchimento revisável e exportação; depende de empresa, representante e modelos. |
-| LIC-45 | P2 | Não iniciada | Confirmação das condições declaradas e revisão versionada; parte obrigatória da geração. |
+| LIC-43 | P2 | Precisa de melhoria | 16 modelos próprios Word em Arial, seleção e ZIP. Textos genéricos e campos explícitos; falta versionamento, desativação, modelos específicos e revisão formal. Inspeção visual no Word pendente. |
+| LIC-44 | P2 | Precisa de melhoria | Word para preencher externamente e upload do PDF final; editor opcional preenche nome/CNPJ e imprime PDF após conferência. Falta contexto completo de empresa/oportunidade/representante e timbrado. |
+| LIC-45 | P2 | Precisa de melhoria | Editor bloqueia campos pendentes/vazio e exige conferência; condições não presumidas nos modelos. Falta persistir revisor, versão e estados documentais. |
 | LIC-46 | P2 | Não iniciada | Declarações geradas vinculadas ao checklist; depende de LIC-43/44/45. |
-| LIC-47 | P2 | Não iniciada | Editor de declaração com campos automáticos, rascunhos e arquivo/modelo. |
+| LIC-47 | P2 | Precisa de melhoria | Editor opcional e rascunhos em memória preservados ao trocar/fechar/voltar. Falta persistência e gestão de modelos personalizados por oportunidade. |
 | LIC-48 | P3 | Não iniciada | Provedor, tratamento de dados e limites precisam ser definidos antes de redação por IA externa. |
-| LIC-49 | P2 | Precisa de melhoria | Originais individuais na biblioteca. Falta pacote ZIP/PDF, incompatibilidades e preservação de assinaturas. |
+| LIC-49 | P2 | Precisa de melhoria | Documentos selecionáveis e ZIP único com originais preservados, nomes portáveis e erro sem pacote parcial. Falta ordenação, revisão consolidada e PDF único; não confundir com anexos oficiais. |
 
 ## Catálogo, itens e propostas
 
@@ -76,9 +76,9 @@ Responsável técnico: Codex. Decisões de produto/comerciais: proprietário do 
 | LIC-16 | P1 | Precisa de melhoria | Itens oficiais e leitura textual existem; faltam tabelas de documentos, lotes e conferência de extração. |
 | LIC-17 | P2 | Não iniciada | Comparação técnica documentada; correspondência de palavras atual não atende este critério. |
 | LIC-18 | P2 | Precisa de melhoria | CSV UTF-8 com mapeamento sugerido/revisável, prévia, duplicidades, seleção explícita e gravação atômica/idempotente. Custo interno, preço de venda, unidade e periodicidade separados. Falta XLSX/outros formatos e interpretação assistida de planilhas não estruturadas. |
-| LIC-19 | P1 | Precisa de melhoria | Simulador e cenários vinculáveis existentes. Revisar quantidades físicas, unidades de cobrança e duração. |
+| LIC-19 | P1 | Adiada | Simulador retirado do uso atual por decisão do usuário; código/dados preservados. Retomada depende de revisão das premissas. |
 | LIC-57 | P1 | Parcial | API e aba Cotações com seleção PNCP individual/em lote por página exibida, pesquisa e filtro de interesses por perfil ativo com exclusões; itens manuais, preços decimais exatos e preservação entre páginas/filtros. Inclusão em lote valida todos antes de aplicar; limpar preços preenchidos pede confirmação e preserva outras páginas. Seletor comercial do catálogo sob demanda: vínculo separado da aplicação de preço de venda, compatibilidade e confirmação. Estimativa/custo não vira oferta. Falta extração/conferência de lotes da contratação; correspondência lexical não comprova equivalência técnica. |
-| LIC-58 | P2 | Não iniciada | Transferência revisada de preços sem custos/margens; depende de LIC-57. |
+| LIC-58 | P2 | Adiada | Integração com proposta adiada enquanto o simulador não for retomado. |
 | LIC-59 | P2 | Parcial | Tela de condições comerciais explícitas e empresa proponente preservada por versão; revisão requer cadastro e conferências. Sem padrões genéricos inferidos. Representantes, timbrado e geração Word/PDF ainda pendentes. |
 | LIC-60 | P2 | Parcial | Versões imutáveis, rascunho/revisão interna, autor, auditoria, idempotência e proteção contra concorrência. Histórico recente/por número e revisão somente da atual. Falha preserva formulário; edição reinicia conferências. Comparação com a atual; atualização explícita das referências da mesma empresa/edital preserva campos comerciais, reinicia conferências e não muda revisão-base nem salva automaticamente. API continua recusando revisão/itens obsoletos. Navegação/menu/histórico e logout/troca de empresa protegem alterações; cancelar não envia requisição, falha restaura edição/proteção e gravação pendente impede saída/troca de aba. Sucesso de contexto confirmado não repete descarte. Faltam recuperação durável, contexto iniciado em outra aba, mesclagem/reconciliação de itens, exportação e registro de envio/comprovante; salvar não envia. Contratos em COTACOES-NAVEGACAO.md e COTACOES-REFERENCIAS.md. |
 
@@ -102,9 +102,9 @@ Responsável técnico: Codex. Decisões de produto/comerciais: proprietário do 
 | LIC-40 | P2 | Não iniciada | Formulários por tipo; conteúdo específico depende de revisão especializada. |
 | LIC-41 | P2 | Não iniciada | Minutas próprias revisadas/versionadas; depende dos modelos e da infraestrutura documental. |
 | LIC-42 | P2 | Não iniciada | Registro de prazo/fonte, protocolo e resposta; distinguir eventos e não calcular cabimento automaticamente. |
-| LIC-50 | P2 | Não iniciada | Cadastro manual de atas tipadas com original e histórico. |
+| LIC-50 | P2 | Precisa de melhoria | Cadastro manual de atas de registro de preços com PDF privado, oportunidade opcional, órgão, itens/fornecedor/preços, vigência, responsável e histórico; ADMIN altera, membros consultam, revisão concorrente e arquivamento preservam dados. Outros tipos, importação oficial e versões completas de arquivos não incluídos. |
 | LIC-51 | P2 | Não iniciada | Extração como rascunho conferível; depende de LIC-50 e da leitura documental. |
-| LIC-52 | P2 | Não iniciada | Responsáveis, agenda e evolução da ata; depende de LIC-50. |
+| LIC-52 | P2 | Precisa de melhoria | Responsável, vigência e alertas internos 30 dias/vencimento, deduplicação, renovação, arquivamento/restauração. Falta agenda, e-mail, documentos posteriores e controle de pedidos/consumo/execução. |
 
 ## Automação e portais
 

@@ -14,6 +14,9 @@ import { defaultProfile, scoreOpportunity } from "./scoring.js";
 import type { PoolClient } from "pg";
 import {recordSourceChange,findRelatedPublications} from './source-changes.js';
 import {notifyAgencyWatches} from './agency-watches.js';
+import {documentNotifications} from './document-alerts.js';
+import {priceRecordNotifications} from './price-records.js';
+import {reconcileSource,type PublicSnapshot} from './source-reconciliation.js';
 
 const intervalMinutes = Math.max(
   15,
@@ -88,64 +91,57 @@ export async function saveOpportunity(
         raw.dataAtualizacaoPncp ??
         raw.dataAtualizacao,
     );
-    if (
-      previous?.source_updated_at &&
-      sourceDate &&
-      new Date(sourceDate) < new Date(previous.source_updated_at)
-    ) {
-      await db.query(
-        "INSERT INTO opportunity_sources(opportunity_id,source_code,external_id) VALUES($1,$2,$3) ON CONFLICT(source_code,external_id) DO UPDATE SET synced_at=now()",
-        [previous.id, item.sourceCode, item.externalId],
-      );
-      return {
-        id: previous.id,
-        created: false,
-        updated: false,
-        hash: previous.content_hash,
-      };
+    const observed=relevant(item) as PublicSnapshot;
+    const reconciliation=reconcileSource(previous?relevant(previous) as PublicSnapshot:null,observed,iso(previous?.source_updated_at),sourceDate,includeDocuments);
+    const recordObservation=async(oid:string)=>db.query(
+      'INSERT INTO opportunity_source_observations(id,opportunity_id,source_code,external_id,source_url,reported_updated_at,decision,reason,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(opportunity_id,source_code) DO UPDATE SET external_id=excluded.external_id,source_url=excluded.source_url,reported_updated_at=excluded.reported_updated_at,consulted_at=now(),decision=excluded.decision,reason=excluded.reason,snapshot=excluded.snapshot',
+      [randomUUID(),oid,item.sourceCode,item.externalId,item.url,sourceDate,reconciliation.decision,reconciliation.reason,JSON.stringify(observed)],
+    );
+    if(previous&&reconciliation.decision!=='accepted'){
+      await db.query('INSERT INTO opportunity_sources(opportunity_id,source_code,external_id) VALUES($1,$2,$3) ON CONFLICT(source_code,external_id) DO UPDATE SET synced_at=now()',[previous.id,item.sourceCode,item.externalId]);
+      await recordObservation(previous.id);
+      return {id:previous.id,created:false,updated:false,hash:previous.content_hash};
     }
-    const documents = includeDocuments
-      ? item.documents
-      : (previous?.documents ?? item.documents);
-    const merged = {
-      ...item,
-      description: item.description ?? previous?.description ?? "",
-      documents,
-    };
+    const merged={...item,...reconciliation.snapshot};
+    if(previous&&reconciliation.reason==='same_known_fields'&&!sourceDate){
+      merged.sourceCode=previous.source_code;merged.sourceName=previous.source_name;merged.raw=previous.raw;
+    }
+    const documents=merged.documents;
     const hash = digest(JSON.stringify(relevant(merged))),
       changed = !!previous && previous.content_hash !== hash;
     const oid = previous?.id ?? randomUUID();
     await db.query(
       `INSERT INTO opportunities(id,canonical_key,title,description,agency,state,city,modality,sphere,value,published_at,opens_at,closes_at,status,url,source_code,source_name,documents,content_hash,raw)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
-      ON CONFLICT(canonical_key) DO UPDATE SET title=excluded.title,description=excluded.description,agency=excluded.agency,state=excluded.state,city=excluded.city,modality=excluded.modality,sphere=excluded.sphere,value=excluded.value,published_at=excluded.published_at,opens_at=excluded.opens_at,closes_at=excluded.closes_at,status=excluded.status,url=excluded.url,documents=excluded.documents,content_hash=excluded.content_hash,raw=excluded.raw,synced_at=now(),updated_at=CASE WHEN opportunities.content_hash<>excluded.content_hash THEN now() ELSE opportunities.updated_at END`,
+      ON CONFLICT(canonical_key) DO UPDATE SET title=excluded.title,description=excluded.description,agency=excluded.agency,state=excluded.state,city=excluded.city,modality=excluded.modality,sphere=excluded.sphere,value=excluded.value,published_at=excluded.published_at,opens_at=excluded.opens_at,closes_at=excluded.closes_at,status=excluded.status,url=excluded.url,source_code=excluded.source_code,source_name=excluded.source_name,documents=excluded.documents,content_hash=excluded.content_hash,raw=excluded.raw,synced_at=now(),updated_at=CASE WHEN opportunities.content_hash<>excluded.content_hash THEN now() ELSE opportunities.updated_at END`,
       [
         oid,
         item.canonicalKey,
-        item.title,
+        merged.title,
         merged.description,
-        item.agency,
-        item.state,
-        item.city,
-        item.modality,
-        item.sphere,
-        item.value,
-        item.publishedAt,
-        item.opensAt,
-        item.closesAt,
-        item.status,
-        item.url,
-        item.sourceCode,
-        item.sourceName,
+        merged.agency,
+        merged.state,
+        merged.city,
+        merged.modality,
+        merged.sphere,
+        merged.value,
+        merged.publishedAt,
+        merged.opensAt,
+        merged.closesAt,
+        merged.status,
+        merged.url,
+        merged.sourceCode,
+        merged.sourceName,
         JSON.stringify(documents),
         hash,
-        JSON.stringify(item.raw ?? null),
+        JSON.stringify(merged.raw ?? null),
       ],
     );
     await db.query(
       "INSERT INTO opportunity_sources(opportunity_id,source_code,external_id) VALUES($1,$2,$3) ON CONFLICT(source_code,external_id) DO UPDATE SET synced_at=now()",
       [oid, item.sourceCode, item.externalId],
     );
+    await recordObservation(oid);
     if (sourceDate)
       await db.query(
         "UPDATE opportunities SET source_updated_at=$1 WHERE id=$2",
@@ -293,17 +289,7 @@ async function deadlineNotifications() {
       `/app/radar/${t.id}`,
       `deadline:${t.id}:${iso(t.due)?.slice(0, 10)}`,
     );
-  const docs = await rows(
-    `SELECT d.id,d.organization_id,d.name,d.expires_at FROM documents d JOIN organizations o ON o.id=d.organization_id WHERE o.is_demo=false AND d.expires_at BETWEEN now()-interval '1 day' AND now()+interval '15 days'`,
-  );
-  for (const d of docs)
-    await notify(
-      d.organization_id,
-      "Documento próximo do vencimento",
-      d.name,
-      "/app/documentos",
-      `expiry:${d.id}:${iso(d.expires_at)}`,
-    );
+
 }
 const logFailure = (error: any) =>
   console.error(
@@ -544,7 +530,9 @@ export async function startJobs() {
   attachmentTimer = setInterval(() => void collectMissingAttachments().catch(logFailure), 30_000);
   attachmentTimer.unref();
 }
+let nextDocumentCheck=0;
 export async function tick() {
+  if(!stopped && Date.now()>=nextDocumentCheck){nextDocumentCheck=Date.now()+60_000;await documentNotifications();await priceRecordNotifications();}
   if (schedulerEnabled && !active && !stopped) {
     const org = await one(
       "SELECT id FROM organizations WHERE is_demo=false LIMIT 1",

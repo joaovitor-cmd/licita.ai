@@ -18,6 +18,8 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  ChevronLeft,
+  ChevronRight,
   Package,
   Radio,
   Search,
@@ -31,10 +33,10 @@ import type { Notification, Session } from "./types";
 import { ErrorNotice, Loading, SessionContext, ToastProvider,useToast } from "./ui";
 import {useDeparture} from './Departure';
 import { AuthPage } from "./pages/Auth";
-const SimulatorPage=lazy(()=>import('./pages/Simulator').then(module=>({default:module.SimulatorPage})));
 const DigestPage=lazy(()=>import('./pages/Digests').then(module=>({default:module.DigestPage})));
 const CommercialPage=lazy(()=>import('./pages/Commercial').then(module=>({default:module.CommercialPage})));
 import {ThemeToggle} from './theme';
+import {NotificationsModal} from './NotificationsModal';
 import {
   DashboardPage,
   OpportunitiesPage,
@@ -43,6 +45,7 @@ import {
 const RadarPage=lazy(()=>import('./pages/Radar').then(module=>({default:module.RadarPage})));
 const TrackingPage=lazy(()=>import('./pages/Radar').then(module=>({default:module.TrackingPage})));
 const CatalogPage=lazy(()=>import('./pages/Operations').then(module=>({default:module.CatalogPage})));
+const PriceRecordsPage=lazy(()=>import('./pages/PriceRecords').then(module=>({default:module.PriceRecordsPage})));
 const DocumentsPage=lazy(()=>import('./pages/Operations').then(module=>({default:module.DocumentsPage})));
 const ProfilePage=lazy(()=>import('./pages/Operations').then(module=>({default:module.ProfilePage})));
 const SourcesPage=lazy(()=>import('./pages/Operations').then(module=>({default:module.SourcesPage})));
@@ -56,9 +59,9 @@ const nav = [
   { to: "/app/oportunidades", label: "Oportunidades", icon: Compass },
   { to: "/app/radar", label: "Meu radar", icon: Radio },
   { to: "/app/comercial", label: "Histórico comercial", icon: LayoutDashboard },
-  { to: "/app/simulador", label: "Simulador", icon: SlidersHorizontal },
   { to: "/app/catalogo", label: "Catálogo", icon: Package },
   { to: "/app/documentos", label: "Documentos", icon: FileStack },
+  { to: "/app/atas-precos", label: "Atas de preços", icon: FileStack },
   { to: "/app/perfil", label: "Perfil comercial", icon: SlidersHorizontal },
   { to: "/app/empresa", label: "Dados da empresa", icon: Building2 },
   { to: "/app/fontes", label: "Fontes de dados", icon: Building2 },
@@ -92,19 +95,27 @@ function Shell({
     ),
     [userOpen, setUserOpen] = useState(false),
     [search, setSearch] = useState("");
+  const [sidebarCollapsed,setSidebarCollapsed]=useState(()=>{
+    try{return localStorage.getItem('licitaro-sidebar-collapsed')==='true';}catch{return false;}
+  });
+  function toggleSidebar(){
+    const next=!sidebarCollapsed;setSidebarCollapsed(next);
+    try{localStorage.setItem('licitaro-sidebar-collapsed',String(next));}catch{/* The menu still works when storage is unavailable. */}
+  }
   const navigate = useNavigate();
   const departure=useDeparture(),toast=useToast();
   const location = useLocation();
   const mobile=mobilePath===location.pathname;
   const notices = useResource<Notification[]>("/notifications");
   const rights=useResource<{features:string[]}>('/entitlements');
-  const navFeature:Record<string,string>={'/app/oportunidades':'discovery','/app/radar':'radar','/app/comercial':'commercialHistory','/app/simulador':'simulator','/app/catalogo':'catalog','/app/documentos':'documents'};
+  const navFeature:Record<string,string>={'/app/oportunidades':'discovery','/app/radar':'radar','/app/comercial':'commercialHistory','/app/catalogo':'catalog','/app/documentos':'documents','/app/atas-precos':'documents'};
   useEffect(() => {
     const media = window.matchMedia("(max-width:1020px)");
     const change = () => setNarrow(media.matches);
     media.addEventListener("change", change);
     return () => media.removeEventListener("change", change);
   }, []);
+  const [notificationsOpen,setNotificationsOpen]=useState(false);
   const unread = notices.data?.filter((n) => !n.read).length || 0;
   useEffect(() => {
     // Lazy navigation may commit after the address changes. Keep an explicit
@@ -125,7 +136,7 @@ function Shell({
   }, []);
   return (
     <SessionContext.Provider value={{ session, refreshSession: refresh }}>
-      <div className="app-shell">
+      <div className={`app-shell ${sidebarCollapsed&&!narrow ? "sidebar-collapsed" : ""}`}>
         {mobile && (
           <button
             aria-label="Fechar menu"
@@ -134,6 +145,7 @@ function Shell({
           />
         )}
         <aside
+          id="main-sidebar"
           className={`sidebar ${mobile ? "sidebar-open" : ""}`}
           inert={narrow && !mobile}
         >
@@ -148,21 +160,7 @@ function Shell({
           >
             <X size={20} />
           </button>
-          <div className="workspace-switch">
-            <span className="workspace-avatar">
-              {session.organization.name.slice(0, 1).toUpperCase()}
-            </span>
-            <div>
-              <strong>{session.organization.name}</strong>
-              <span>
-                {session.organization.isDemo
-                  ? "Workspace demonstração"
-                  : "Workspace da empresa"}
-              </span>
-            </div>
-            <ShieldCheck size={16} />
-          </div>
-          <WorkspaceSelector/>
+          <div className="sidebar-workspaces"><WorkspaceSelector/></div>
           {session.isPlatformAdmin&&<Link className="nav-item" to="/app/admin"><ShieldCheck size={18}/> Gestão de clientes</Link>}
           <div className="nav-label">WORKSPACE</div>
           <nav aria-label="Menu principal">
@@ -172,6 +170,8 @@ function Shell({
                   <div className="nav-label nav-divider">SUA OPERAÇÃO</div>
                 )}
                 <NavLink
+                  aria-label={item.label}
+                  title={sidebarCollapsed&&!narrow?item.label:undefined}
                   to={item.to}
                   end={item.end}
                   className={({ isActive }) =>
@@ -185,7 +185,7 @@ function Shell({
             ))}
           </nav>
           <div className="sidebar-bottom">
-            <NavLink to="/app/configuracoes" className="nav-item">
+            <NavLink to="/app/configuracoes" className="nav-item" aria-label="Configurações" title={sidebarCollapsed&&!narrow?"Configurações":undefined}>
               <Settings size={18} />
               <span>Configurações</span>
             </NavLink>
@@ -194,8 +194,13 @@ function Shell({
             </div>
           </div>
         </aside>
+        {notificationsOpen&&<NotificationsModal items={notices.data??[]} loading={notices.loading} error={notices.error} reload={notices.reload} onClose={()=>setNotificationsOpen(false)} onRead={id=>{notices.setData(previous=>previous?.map(n=>!id||n.id===id?{...n,read:true}:n)??null);}}/>}
+            <button type="button" className="icon-button sidebar-toggle sidebar-edge-toggle" aria-label={sidebarCollapsed?'Expandir menu lateral':'Recolher menu lateral'} title={sidebarCollapsed?'Expandir menu lateral':'Recolher menu lateral'} aria-expanded={!sidebarCollapsed} aria-controls="main-sidebar" onClick={toggleSidebar}>
+              {sidebarCollapsed?<ChevronRight size={16}/>:<ChevronLeft size={16}/>}
+            </button>
         <div className="main-shell">
           <header className="topbar">
+
             <button
               className="icon-button mobile-menu"
               aria-label="Abrir menu"
@@ -232,14 +237,15 @@ function Shell({
               />
               <kbd>↵</kbd>
             </form>
-            <Link
-              to="/app/notificacoes"
+            <button
+              type="button"
+              onClick={()=>{setNotificationsOpen(true);notices.reload();}}
               className="notification-button icon-button"
               aria-label={`Notificações${unread ? `, ${unread} não lidas` : ""}`}
             >
               <Bell size={19} />
-              {unread > 0 && <span className="notification-dot" />}
-            </Link>
+              {unread > 0 && <span className="notification-count" aria-hidden="true">{unread>99?"99+":unread}</span>}
+            </button>
             <ThemeToggle />
             <div className="user-control">
               <button
@@ -374,10 +380,11 @@ export function App() {
           <Route path="oportunidades" element={<OpportunitiesPage />} />
           <Route path="oportunidades/:id" element={<OpportunityPage />} />
           <Route path="radar" element={<RadarPage />} />
-          <Route path="simulador" element={<SimulatorPage />} />
+          <Route path="simulador" element={<Navigate to="/app/radar" replace />} />
           <Route path="radar/:id" element={<TrackingPage />} />
           <Route path="catalogo" element={<CatalogPage />} />
           <Route path="documentos" element={<DocumentsPage />} />
+          <Route path="atas-precos" element={<PriceRecordsPage />} />
           <Route path="perfil" element={<ProfilePage />} />
           <Route path="empresa" element={<Suspense fallback={<Loading/>}><CompanyDetailsPage/></Suspense>} />
           <Route path="monitoramentos" element={<Suspense fallback={<Loading/>}><AgencyWatchesPage/></Suspense>} />

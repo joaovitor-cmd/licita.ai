@@ -43,12 +43,12 @@ export function RadarSettings({
   return (
     <Modal
       title="Responsável padrão do radar"
-      description="As novas oportunidades e suas tarefas iniciais serão atribuídas a esta pessoa. Você pode trocar o responsável de cada participação depois."
+      description="Defina quem recebe as novas oportunidades e suas tarefas iniciais."
       onClose={() => {
         if (!busy) onClose();
       }}
     >
-      <form className="modal-form" onSubmit={save}>
+      <form className="modal-form radar-settings-form" onSubmit={save}>
         {resource.loading ? (
           <Loading />
         ) : resource.error ? (
@@ -85,7 +85,7 @@ export function RadarSettings({
             <p className="muted small">
               As participações existentes mantêm seus responsáveis.
             </p>
-            <div className="button-row">
+            <div className="modal-footer">
               <Button
                 type="button"
                 variant="ghost"

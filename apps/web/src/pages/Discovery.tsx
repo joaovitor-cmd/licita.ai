@@ -1,3 +1,4 @@
+import {SourceReliability} from '../SourceReliability';
 import { lazy, Suspense, useEffect, useId, useState, type FormEvent } from "react";
 const CommercialProposals = lazy(() => import('./CommercialProposals'));
 import {EdictGuide} from './EdictGuide';
@@ -636,6 +637,7 @@ export function OpportunitiesPage() {
   );
 }
 export function OpportunityPage() {
+  const [sourceRevision,setSourceRevision]=useState(0);
   const [detailParams]=useSearchParams();
   const { id } = useParams(),
     navigate = useNavigate();
@@ -659,7 +661,8 @@ export function OpportunityPage() {
     try {
       await send(`/opportunities/${item.id}/refresh`, "POST", {});
       reload();
-      toast("Dados e anexos conferidos na fonte.");
+      setSourceRevision(v=>v+1);
+      toast("Consulta realizada. Confira as versões e eventuais divergências.");
     } catch (e) {
       toast((e as Error).message, true);
     } finally {
@@ -704,6 +707,7 @@ export function OpportunityPage() {
       </div>
       <div className="detail-layout">
         <div>
+          <SourceReliability key={`${item.id}:${sourceRevision}`} opportunityId={item.id}/>
           <div className="detail-summary-grid">
             <div className="card">
               <span className="overline">VALOR ESTIMADO</span>
@@ -880,7 +884,6 @@ export function OpportunityPage() {
             </p>
             <Score value={item.match.score} excluded={item.match.excluded} />
             <p className="muted small">Aderência é a afinidade com seu perfil comercial, não a comprovação de que sua empresa atende ao edital.</p>
-            <Link className="button secondary full-width" to={`/app/simulador?opportunityId=${item.id}`}>Simular viabilidade</Link>
             {item.trackingId ? (
               <Link
                 className="button primary full-width"

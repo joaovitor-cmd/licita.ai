@@ -8,6 +8,7 @@ import '../../web/src/readability.css';
 import '../../web/src/dark.css';
 import '../../web/src/selects.css';
 import './console.css';
+import '../../web/src/responsive.css';
 import {App} from './App';
 initializeTheme();
 createRoot(document.getElementById('root')!).render(<React.StrictMode><BrowserRouter><ToastProvider><App/></ToastProvider></BrowserRouter></React.StrictMode>);
